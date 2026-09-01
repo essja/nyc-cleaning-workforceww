@@ -12,16 +12,19 @@ import { DevicesPage } from './pages/DevicesPage.js';
 import { IntelligencePage } from './pages/IntelligencePage.js';
 import { AuditPage } from './pages/AuditPage.js';
 import { EmployeeMobileApp } from './mobile/EmployeeMobileApp.js';
-import { Lock, Mail, Building2, ShieldCheck, UserCheck, ArrowRight, Eye, EyeOff, KeyRound } from 'lucide-react';
+import { Lock, Mail, Building2, ShieldCheck, UserCheck, ArrowRight, Eye, EyeOff, Sparkles, User, Briefcase } from 'lucide-react';
 
 export const App: React.FC = () => {
   const { user, organization, login, isLoading } = useAuth();
   const [currentTab, setCurrentTab] = useState('dashboard');
   const [isMobileView, setIsMobileView] = useState(false);
 
-  // Login form state
-  const [email, setEmail] = useState('admin@nyccleaning.com');
-  const [password, setPassword] = useState('Password123!');
+  // Portal selection: 'OWNER' vs 'WORKER'
+  const [portalMode, setPortalMode] = useState<'OWNER' | 'WORKER'>('OWNER');
+
+  // Login form state (Completely blank by default)
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
@@ -43,23 +46,17 @@ export const App: React.FC = () => {
       const cleanPassword = password.trim();
       await login(cleanEmail, cleanPassword);
     } catch (err: any) {
-      setLoginError(err.message || 'Login failed');
+      setLoginError(err.message || 'Invalid email or password');
     } finally {
       setIsLoggingIn(false);
     }
   };
 
-  const handleFillAdmin = () => {
-    setEmail('admin@nyccleaning.com');
-    setPassword('Password123!');
-    setLoginError(null);
-  };
-
-  // If unauthenticated: Render Enterprise Login Screen
+  // If unauthenticated: Render Portal Screen with Owner vs Cleaner selection
   if (!user) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 flex items-center justify-center p-4 text-slate-100">
-        <div className="max-w-md w-full space-y-6">
+        <div className="max-w-md w-full space-y-5">
           {/* Logo & Header */}
           <div className="text-center space-y-2">
             <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center font-black text-white text-2xl mx-auto shadow-xl shadow-blue-500/25">
@@ -69,24 +66,74 @@ export const App: React.FC = () => {
             <p className="text-xs text-slate-400">Enterprise Workforce Management, Scheduling & Biometric Attendance</p>
           </div>
 
+          {/* Portal Switcher Tabs */}
+          <div className="grid grid-cols-2 p-1 bg-slate-900/90 border border-slate-800 rounded-2xl">
+            <button
+              type="button"
+              onClick={() => {
+                setPortalMode('OWNER');
+                setLoginError(null);
+              }}
+              className={`py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition ${
+                portalMode === 'OWNER'
+                  ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <Briefcase className="w-4 h-4" />
+              <span>Owner & Admin</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setPortalMode('WORKER');
+                setLoginError(null);
+              }}
+              className={`py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition ${
+                portalMode === 'WORKER'
+                  ? 'bg-emerald-600 text-white shadow-md shadow-emerald-500/20'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <User className="w-4 h-4" />
+              <span>Staff & Cleaner</span>
+            </button>
+          </div>
+
           {/* Login Card */}
           <div className="bg-slate-950/90 backdrop-blur border border-slate-800 rounded-3xl p-6 sm:p-7 shadow-2xl space-y-4">
+            <div className="border-b border-slate-800 pb-3">
+              <h2 className="text-base font-bold text-white flex items-center gap-2">
+                {portalMode === 'OWNER' ? (
+                  <>
+                    <Briefcase className="w-4 h-4 text-blue-400" />
+                    <span>Owner & Management Portal</span>
+                  </>
+                ) : (
+                  <>
+                    <User className="w-4 h-4 text-emerald-400" />
+                    <span>Staff Attendance & Mobile Portal</span>
+                  </>
+                )}
+              </h2>
+              <p className="text-[11px] text-slate-400 mt-0.5">
+                {portalMode === 'OWNER'
+                  ? 'Sign in to access live operations, employee roster, reports & settings.'
+                  : 'Sign in to clock in/out, view your work schedule, and submit time off.'}
+              </p>
+            </div>
+
             {loginError && (
-              <div className="p-3.5 rounded-2xl bg-red-500/15 border border-red-500/30 text-xs text-red-300 flex items-center justify-between">
-                <span>{loginError}</span>
-                <button
-                  type="button"
-                  onClick={handleFillAdmin}
-                  className="underline font-bold text-red-200 ml-2 hover:text-white"
-                >
-                  Reset Admin
-                </button>
+              <div className="p-3 rounded-2xl bg-red-500/15 border border-red-500/30 text-xs text-red-300">
+                {loginError}
               </div>
             )}
 
             <form onSubmit={handleLoginSubmit} className="space-y-4 text-xs">
               <div>
-                <label className="block text-slate-400 font-semibold mb-1.5">Email Address</label>
+                <label className="block text-slate-400 font-semibold mb-1.5">
+                  {portalMode === 'OWNER' ? 'Owner Email Address' : 'Staff Login Email'}
+                </label>
                 <div className="relative">
                   <Mail className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
                   <input
@@ -96,7 +143,7 @@ export const App: React.FC = () => {
                     autoCorrect="off"
                     autoComplete="email"
                     spellCheck={false}
-                    placeholder="name@nyccleaning.com"
+                    placeholder={portalMode === 'OWNER' ? 'admin@nyccleaning.com' : 'cleaner@nyccleaning.com'}
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-10 pr-3 py-3 text-slate-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -141,32 +188,22 @@ export const App: React.FC = () => {
                 </div>
               </div>
 
-              {/* Quick Fill Helper */}
-              <div className="flex items-center justify-between pt-1">
-                <button
-                  type="button"
-                  onClick={handleFillAdmin}
-                  className="text-[11px] text-slate-400 hover:text-white flex items-center gap-1 bg-slate-900/90 border border-slate-800 px-2.5 py-1 rounded-lg"
-                >
-                  <KeyRound className="w-3 h-3 text-blue-400" />
-                  <span>Fill Owner: admin@nyccleaning.com</span>
-                </button>
-              </div>
-
               <button
                 type="submit"
                 disabled={isLoggingIn}
-                className="w-full py-3.5 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white font-bold rounded-xl shadow-lg shadow-blue-500/25 transition disabled:opacity-50 mt-2 text-sm flex items-center justify-center gap-2"
+                className={`w-full py-3.5 text-white font-bold rounded-xl shadow-lg transition disabled:opacity-50 mt-2 text-sm flex items-center justify-center gap-2 ${
+                  portalMode === 'OWNER'
+                    ? 'bg-blue-600 hover:bg-blue-500 active:bg-blue-700 shadow-blue-500/25'
+                    : 'bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 shadow-emerald-500/25'
+                }`}
               >
-                {isLoggingIn ? 'Authenticating...' : 'Sign In to Workspace'}
+                {isLoggingIn
+                  ? 'Authenticating...'
+                  : portalMode === 'OWNER'
+                    ? 'Sign In to Management Workspace'
+                    : 'Sign In to Cleaner App'}
               </button>
             </form>
-
-            <div className="pt-2 text-center border-t border-slate-800/80">
-              <p className="text-[11px] text-slate-500">
-                Owner: <strong className="text-slate-400">admin@nyccleaning.com</strong> • Default Pass: <strong className="text-slate-400">Password123!</strong>
-              </p>
-            </div>
           </div>
         </div>
       </div>
