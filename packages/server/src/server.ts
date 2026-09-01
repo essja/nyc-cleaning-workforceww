@@ -6,6 +6,8 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { runMigrations } from './db/migrate.js';
+import { initProductionDatabase } from './db/init-prod.js';
+import { db } from './db/index.js';
 import authRoutes from './modules/auth/auth.routes.js';
 import buildingRoutes from './modules/buildings/buildings.routes.js';
 import employeeRoutes from './modules/employees/employees.routes.js';
@@ -76,8 +78,21 @@ export function createApp() {
   return app;
 }
 
-export function startServer(port: number = 4000) {
+export async function startServer(port: number = 4000) {
   runMigrations();
+
+  // Auto-initialize clean NYC Cleaning & Maintenance company on fresh production startup
+  try {
+    const userCount = db.queryOne<{ count: number }>('SELECT COUNT(*) as count FROM users');
+    if (!userCount || userCount.count === 0) {
+      console.log('🌱 Fresh deployment detected. Initializing NYC Cleaning and Maintenance for Ibrihim Jalloh...');
+      await initProductionDatabase();
+      console.log('✅ Master Admin provisioned: admin@nyccleaning.com / Password123!');
+    }
+  } catch (err) {
+    console.error('⚠️ Database auto-initialization check warning:', err);
+  }
+
   const app = createApp();
   return app.listen(port, () => {
     console.log(`🚀 Workforce Management Platform API running on http://localhost:${port}`);
