@@ -11,13 +11,32 @@ export class DatabaseService {
   private db: DatabaseSync;
 
   private constructor(dbPath?: string) {
-    const dataDir = path.resolve(__dirname, '../../data');
-    if (!fs.existsSync(dataDir)) {
-      fs.mkdirSync(dataDir, { recursive: true });
+    let targetPath = dbPath || process.env.DATABASE_PATH || process.env.DATABASE_URL;
+
+    if (!targetPath) {
+      // Check if Render persistent disk is mounted at /data or /var/data
+      if (fs.existsSync('/data')) {
+        targetPath = '/data/workforce.sqlite';
+      } else if (fs.existsSync('/var/data')) {
+        targetPath = '/var/data/workforce.sqlite';
+      } else if (fs.existsSync('/app/data')) {
+        targetPath = '/app/data/workforce.sqlite';
+      } else {
+        const dataDir = path.resolve(__dirname, '../../data');
+        if (!fs.existsSync(dataDir)) {
+          fs.mkdirSync(dataDir, { recursive: true });
+        }
+        targetPath = path.join(dataDir, 'workforce.sqlite');
+      }
     }
 
-    const defaultPath = path.join(dataDir, 'workforce.sqlite');
-    const targetPath = dbPath || process.env.DATABASE_URL || defaultPath;
+    // Ensure parent directory of targetPath exists
+    const parentDir = path.dirname(targetPath);
+    if (!fs.existsSync(parentDir)) {
+      fs.mkdirSync(parentDir, { recursive: true });
+    }
+
+    console.log(`💾 SQLite Database connected at: ${targetPath}`);
 
     this.db = new DatabaseSync(targetPath);
     this.db.exec('PRAGMA journal_mode = WAL;');
