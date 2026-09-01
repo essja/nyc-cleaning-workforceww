@@ -290,7 +290,11 @@ export const EmployeesPage: React.FC = () => {
               <span>Bulk Excel Import</span>
             </button>
             <button
-              onClick={() => setIsAddModalOpen(true)}
+              onClick={() => {
+                const timestamp = Date.now().toString().slice(-5);
+                setFormData(prev => ({ ...prev, employee_code: `NYC-${timestamp}` }));
+                setIsAddModalOpen(true);
+              }}
               className="px-3.5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-semibold flex items-center gap-2 shadow-lg shadow-blue-500/20 transition"
             >
               <UserPlus className="w-4 h-4" />
@@ -498,14 +502,24 @@ export const EmployeesPage: React.FC = () => {
 
             <form onSubmit={handleCreateEmployee} className="space-y-3 text-xs">
               <div>
-                <label className="block text-slate-400 font-semibold mb-1">Employee ID / Code</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-slate-400 font-semibold">Staff ID / Code <span className="text-slate-600 font-normal">(auto-generated)</span></label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const ts = Date.now().toString().slice(-5);
+                      setFormData(prev => ({ ...prev, employee_code: `NYC-${ts}` }));
+                    }}
+                    className="text-[10px] text-blue-400 hover:text-blue-300 font-semibold"
+                  >
+                    🔄 Regenerate
+                  </button>
+                </div>
                 <input
                   type="text"
-                  required
-                  placeholder="EMP-1050"
                   value={formData.employee_code}
-                  onChange={(e) => setFormData({ ...formData, employee_code: e.target.value })}
-                  className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-slate-100 font-mono"
+                  readOnly
+                  className="w-full bg-slate-800/60 border border-slate-700 rounded-xl px-3 py-2 text-blue-300 font-mono cursor-default select-all"
                 />
               </div>
 

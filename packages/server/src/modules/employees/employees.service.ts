@@ -269,13 +269,18 @@ export class EmployeesService {
   }
 
   public static createEmployee(orgId: string, actorUserId: string, data: CreateEmployeeInput): EmployeeDetailView {
+    // Auto-generate employee code if not provided
+    const employeeCode = data.employee_code?.trim()
+      ? data.employee_code.trim()
+      : `NYC-${Date.now().toString().slice(-5)}`;
+
     const existing = db.queryOne<Employee>(
       'SELECT id FROM employees WHERE organization_id = ? AND employee_code = ?',
-      [orgId, data.employee_code.trim()]
+      [orgId, employeeCode]
     );
 
     if (existing) {
-      throw new Error(`Employee with ID / Code '${data.employee_code}' already exists in this organization`);
+      throw new Error(`Employee with ID / Code '${employeeCode}' already exists in this organization`);
     }
 
     const employeeId = uuidv4();
@@ -289,7 +294,7 @@ export class EmployeesService {
           employment_type, status, hire_date, created_at, updated_at
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `, [
-        employeeId, orgId, data.employee_code.trim(), data.first_name.trim(), data.last_name.trim(),
+        employeeId, orgId, employeeCode, data.first_name.trim(), data.last_name.trim(),
         data.email?.toLowerCase().trim() || null, data.phone || null, data.department_id || null,
         data.position_id || null, data.manager_id || null, data.employment_type || 'HOURLY',
         data.status || 'ACTIVE', data.hire_date || now.split('T')[0], now, now

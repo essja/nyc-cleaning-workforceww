@@ -7,7 +7,7 @@ import { z } from 'zod';
 const router = Router();
 
 const createEmployeeSchema = z.object({
-  employee_code: z.string().min(1),
+  employee_code: z.string().optional().default(''),
   first_name: z.string().min(1),
   last_name: z.string().min(1),
   email: z.string().email().optional().or(z.literal('')),
