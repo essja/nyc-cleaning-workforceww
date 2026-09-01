@@ -275,19 +275,26 @@ export class ReportsService {
   /**
    * Timesheet Summary & Payroll Export Service
    */
-  public static getTimesheetReport(orgId: string, startDate: string, endDate: string, employeeId?: string): any[] {
+  public static getTimesheetReport(
+    orgId: string,
+    filters: { startDate: string; endDate: string; employeeId?: string; buildingId?: string }
+  ): any[] {
     let sql = `
-      SELECT s.*, e.employee_code, e.first_name, e.last_name, e.hourly_rate as base_rate,
+      SELECT s.*, e.employee_code, e.first_name, e.last_name,
              b.name as building_name
       FROM attendance_sessions s
       JOIN employees e ON e.id = s.employee_id
       JOIN buildings b ON b.id = s.building_id
       WHERE s.organization_id = ? AND s.session_date >= ? AND s.session_date <= ?
     `;
-    const params: any[] = [orgId, startDate, endDate];
-    if (employeeId) {
+    const params: any[] = [orgId, filters.startDate, filters.endDate];
+    if (filters.employeeId) {
       sql += ' AND s.employee_id = ?';
-      params.push(employeeId);
+      params.push(filters.employeeId);
+    }
+    if (filters.buildingId) {
+      sql += ' AND s.building_id = ?';
+      params.push(filters.buildingId);
     }
     sql += ' ORDER BY s.session_date DESC, e.last_name ASC';
     return db.query(sql, params);
@@ -296,8 +303,11 @@ export class ReportsService {
   /**
    * Export Timesheets to Excel Buffer
    */
-  public static exportTimesheetsExcel(orgId: string, startDate: string, endDate: string): Buffer {
-    const records = this.getTimesheetReport(orgId, startDate, endDate);
+  public static exportTimesheetExcel(
+    orgId: string,
+    filters: { startDate: string; endDate: string; employeeId?: string; buildingId?: string }
+  ): Buffer {
+    const records = this.getTimesheetReport(orgId, filters);
     const data = records.map((r) => ({
       'Date': r.session_date,
       'Employee Code': r.employee_code,
@@ -305,9 +315,9 @@ export class ReportsService {
       'Facility / Building': r.building_name,
       'Clock In': r.check_in_time ? new Date(r.check_in_time).toLocaleTimeString() : 'N/A',
       'Clock Out': r.check_out_time ? new Date(r.check_out_time).toLocaleTimeString() : 'N/A',
-      'Total Hours': (r.total_work_minutes / 60).toFixed(2),
-      'Regular Hours': (r.regular_minutes / 60).toFixed(2),
-      'Overtime Hours': (r.overtime_minutes / 60).toFixed(2),
+      'Total Hours': ((r.total_work_minutes || 0) / 60).toFixed(2),
+      'Regular Hours': ((r.regular_minutes || 0) / 60).toFixed(2),
+      'Overtime Hours': ((r.overtime_minutes || 0) / 60).toFixed(2),
       'Status': r.status,
       'Verified': r.biometric_verified ? 'YES' : 'NO'
     }));
