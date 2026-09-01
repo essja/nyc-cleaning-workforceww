@@ -62,7 +62,9 @@ export class EmployeesService {
       SELECT DISTINCT e.*
       FROM employees e
       LEFT JOIN employee_buildings eb ON eb.employee_id = e.id
+      LEFT JOIN organization_users ou ON ou.user_id = e.user_id AND ou.organization_id = e.organization_id
       WHERE e.organization_id = ?
+        AND (ou.role IS NULL OR ou.role != 'OWNER')
     `;
     const params: any[] = [orgId];
 
@@ -324,6 +326,7 @@ export class EmployeesService {
         let userId = existingUser?.id;
 
         if (!userId) {
+          // Create brand-new user account
           userId = uuidv4();
           const rawPass = data.password && data.password.length >= 6 ? data.password : 'Password123!';
           const hash = bcrypt.hashSync(rawPass, 10);
@@ -331,13 +334,34 @@ export class EmployeesService {
             INSERT INTO users (id, email, password_hash, first_name, last_name, phone, is_active, created_at, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)
           `, [userId, normalizedEmail, hash, data.first_name.trim(), data.last_name.trim(), data.phone || null, now, now]);
+        } else {
+          // User already exists — update their password if a specific one was provided
+          if (data.password && data.password.length >= 6) {
+            const hash = bcrypt.hashSync(data.password, 10);
+            db.execute('UPDATE users SET password_hash = ?, is_active = 1, updated_at = ? WHERE id = ?', [hash, now, userId]);
+          } else {
+            // At minimum ensure the account is active
+            db.execute('UPDATE users SET is_active = 1, updated_at = ? WHERE id = ?', [now, userId]);
+          }
         }
 
-        // Add to organization_users
-        db.execute(`
-          INSERT OR IGNORE INTO organization_users (id, organization_id, user_id, role, assigned_building_ids, is_active, created_at, updated_at)
-          VALUES (?, ?, ?, 'EMPLOYEE', ?, 1, ?, ?)
-        `, [uuidv4(), orgId, userId, JSON.stringify(data.building_ids || []), now, now]);
+        // Upsert organization_users — always ensure EMPLOYEE is active and linked
+        const existingOrgUser = db.queryOne<{ id: string; is_active: number }>(
+          'SELECT id, is_active FROM organization_users WHERE organization_id = ? AND user_id = ?',
+          [orgId, userId]
+        );
+
+        if (existingOrgUser) {
+          db.execute(
+            'UPDATE organization_users SET role = ?, is_active = 1, updated_at = ? WHERE id = ?',
+            ['EMPLOYEE', now, existingOrgUser.id]
+          );
+        } else {
+          db.execute(`
+            INSERT INTO organization_users (id, organization_id, user_id, role, assigned_building_ids, is_active, created_at, updated_at)
+            VALUES (?, ?, ?, 'EMPLOYEE', ?, 1, ?, ?)
+          `, [uuidv4(), orgId, userId, JSON.stringify(data.building_ids || []), now, now]);
+        }
 
         // Link employee record to user
         db.execute('UPDATE employees SET user_id = ? WHERE id = ?', [userId, employeeId]);

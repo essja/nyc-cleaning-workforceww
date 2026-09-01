@@ -93,6 +93,22 @@ export async function startServer(port: number = 4000) {
     console.error('⚠️ Database auto-initialization check warning:', err);
   }
 
+  // One-time cleanup: remove any employee records where the linked user has OWNER role
+  // This prevents the Owner from being counted or displayed as a cleaner/staff member
+  try {
+    db.execute(`
+      DELETE FROM employees
+      WHERE id IN (
+        SELECT e.id FROM employees e
+        INNER JOIN organization_users ou ON ou.user_id = e.user_id AND ou.organization_id = e.organization_id
+        WHERE ou.role = 'OWNER'
+      )
+    `);
+    console.log('✅ Owner employee record cleanup complete.');
+  } catch (err) {
+    console.error('⚠️ Owner cleanup warning (non-fatal):', err);
+  }
+
   const app = createApp();
   return app.listen(port, () => {
     console.log(`🚀 Workforce Management Platform API running on http://localhost:${port}`);
