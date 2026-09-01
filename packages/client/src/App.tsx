@@ -12,7 +12,7 @@ import { DevicesPage } from './pages/DevicesPage.js';
 import { IntelligencePage } from './pages/IntelligencePage.js';
 import { AuditPage } from './pages/AuditPage.js';
 import { EmployeeMobileApp } from './mobile/EmployeeMobileApp.js';
-import { Lock, Mail, Building2, ShieldCheck, UserCheck, ArrowRight } from 'lucide-react';
+import { Lock, Mail, Building2, ShieldCheck, UserCheck, ArrowRight, Eye, EyeOff, KeyRound } from 'lucide-react';
 
 export const App: React.FC = () => {
   const { user, organization, login, isLoading } = useAuth();
@@ -22,10 +22,9 @@ export const App: React.FC = () => {
   // Login form state
   const [email, setEmail] = useState('admin@nyccleaning.com');
   const [password, setPassword] = useState('Password123!');
-  const [orgSlug, setOrgSlug] = useState('nyc-cleaning-and-maintenance');
+  const [showPassword, setShowPassword] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
 
   if (isLoading) {
     return (
@@ -40,12 +39,20 @@ export const App: React.FC = () => {
     setLoginError(null);
     setIsLoggingIn(true);
     try {
-      await login(email, password, orgSlug);
+      const cleanEmail = email.trim().toLowerCase();
+      const cleanPassword = password.trim();
+      await login(cleanEmail, cleanPassword);
     } catch (err: any) {
       setLoginError(err.message || 'Login failed');
     } finally {
       setIsLoggingIn(false);
     }
+  };
+
+  const handleFillAdmin = () => {
+    setEmail('admin@nyccleaning.com');
+    setPassword('Password123!');
+    setLoginError(null);
   };
 
   // If unauthenticated: Render Enterprise Login Screen
@@ -55,7 +62,7 @@ export const App: React.FC = () => {
         <div className="max-w-md w-full space-y-6">
           {/* Logo & Header */}
           <div className="text-center space-y-2">
-            <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center font-black text-white text-xl mx-auto shadow-xl shadow-blue-500/25">
+            <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center font-black text-white text-2xl mx-auto shadow-xl shadow-blue-500/25">
               NYC
             </div>
             <h1 className="text-2xl font-black tracking-tight text-white">NYC Cleaning & Maintenance</h1>
@@ -63,68 +70,101 @@ export const App: React.FC = () => {
           </div>
 
           {/* Login Card */}
-          <div className="bg-slate-950/80 backdrop-blur border border-slate-800 rounded-3xl p-6 shadow-2xl space-y-4">
+          <div className="bg-slate-950/90 backdrop-blur border border-slate-800 rounded-3xl p-6 sm:p-7 shadow-2xl space-y-4">
             {loginError && (
-              <div className="p-3 rounded-xl bg-red-500/15 border border-red-500/30 text-xs text-red-300">
-                {loginError}
+              <div className="p-3.5 rounded-2xl bg-red-500/15 border border-red-500/30 text-xs text-red-300 flex items-center justify-between">
+                <span>{loginError}</span>
+                <button
+                  type="button"
+                  onClick={handleFillAdmin}
+                  className="underline font-bold text-red-200 ml-2 hover:text-white"
+                >
+                  Reset Admin
+                </button>
               </div>
             )}
 
-            <form onSubmit={handleLoginSubmit} className="space-y-3 text-xs">
+            <form onSubmit={handleLoginSubmit} className="space-y-4 text-xs">
               <div>
-                <label className="block text-slate-400 font-semibold mb-1">Email Address</label>
+                <label className="block text-slate-400 font-semibold mb-1.5">Email Address</label>
                 <div className="relative">
-                  <Mail className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <Mail className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
                   <input
                     type="email"
                     required
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    autoComplete="email"
+                    spellCheck={false}
                     placeholder="name@nyccleaning.com"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-9 pr-3 py-2.5 text-slate-100 focus:ring-1 focus:ring-blue-500"
+                    className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-10 pr-3 py-3 text-slate-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-slate-400 font-semibold mb-1">Password</label>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-slate-400 font-semibold">Password</label>
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="text-[11px] text-blue-400 hover:text-blue-300 font-medium flex items-center gap-1 focus:outline-none"
+                  >
+                    {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                    <span>{showPassword ? 'Hide Password' : 'Show Password'}</span>
+                  </button>
+                </div>
                 <div className="relative">
-                  <Lock className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <Lock className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
                   <input
                     type={showPassword ? 'text' : 'password'}
                     required
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    autoComplete="current-password"
+                    spellCheck={false}
                     placeholder="••••••••"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-9 pr-12 py-2.5 text-slate-100 focus:ring-1 focus:ring-blue-500"
+                    className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-10 pr-10 py-3 text-slate-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-200 text-[10px] font-bold transition"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 p-1"
+                    title={showPassword ? 'Hide password' : 'Show password'}
                   >
-                    {showPassword ? 'HIDE' : 'SHOW'}
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 </div>
-                {showPassword && password && (
-                  <p className="mt-1 text-[11px] font-mono text-blue-300 bg-blue-500/10 px-2 py-1 rounded-lg border border-blue-500/20">
-                    🔑 {password}
-                  </p>
-                )}
+              </div>
+
+              {/* Quick Fill Helper */}
+              <div className="flex items-center justify-between pt-1">
+                <button
+                  type="button"
+                  onClick={handleFillAdmin}
+                  className="text-[11px] text-slate-400 hover:text-white flex items-center gap-1 bg-slate-900/90 border border-slate-800 px-2.5 py-1 rounded-lg"
+                >
+                  <KeyRound className="w-3 h-3 text-blue-400" />
+                  <span>Fill Owner: admin@nyccleaning.com</span>
+                </button>
               </div>
 
               <button
                 type="submit"
                 disabled={isLoggingIn}
-                className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl shadow-lg shadow-blue-500/25 transition disabled:opacity-50 mt-3"
+                className="w-full py-3.5 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white font-bold rounded-xl shadow-lg shadow-blue-500/25 transition disabled:opacity-50 mt-2 text-sm flex items-center justify-center gap-2"
               >
                 {isLoggingIn ? 'Authenticating...' : 'Sign In to Workspace'}
               </button>
             </form>
 
-            <div className="pt-2 text-center">
+            <div className="pt-2 text-center border-t border-slate-800/80">
               <p className="text-[11px] text-slate-500">
-                Powered by Enterprise Workforce Hub • Sunday–Saturday Pay Model
+                Owner: <strong className="text-slate-400">admin@nyccleaning.com</strong> • Default Pass: <strong className="text-slate-400">Password123!</strong>
               </p>
             </div>
           </div>

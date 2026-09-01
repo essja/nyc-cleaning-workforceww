@@ -4,6 +4,8 @@ import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
 import path from 'path';
 import fs from 'fs';
+import bcrypt from 'bcryptjs';
+import { v4 as uuidv4 } from 'uuid';
 import { fileURLToPath } from 'url';
 import { runMigrations } from './db/migrate.js';
 import { initProductionDatabase } from './db/init-prod.js';
@@ -93,6 +95,57 @@ export async function startServer(port: number = 4000) {
     console.error('⚠️ Database auto-initialization check warning:', err);
   }
 
+  // Guarantee that admin@nyccleaning.com is ALWAYS active and has password Password123!
+  try {
+    const adminEmail = 'admin@nyccleaning.com';
+    const adminPass = 'Password123!';
+    const hash = bcrypt.hashSync(adminPass, 10);
+    const now = new Date().toISOString();
+
+    // Ensure Organization exists
+    let org = db.queryOne<{ id: string }>('SELECT id FROM organizations LIMIT 1');
+    let orgId = org?.id;
+    if (!orgId) {
+      orgId = uuidv4();
+      db.execute(`
+        INSERT INTO organizations (id, name, slug, work_week_start, timezone, currency, settings, created_at, updated_at)
+        VALUES (?, 'NYC Cleaning and Maintenance', 'nyc-cleaning-and-maintenance', 0, 'America/New_York', 'USD', '{}', ?, ?)
+      `, [orgId, now, now]);
+    }
+
+    // Ensure admin user exists and password is Password123!
+    let adminUser = db.queryOne<{ id: string }>('SELECT id FROM users WHERE LOWER(email) = ?', [adminEmail.toLowerCase()]);
+    let adminUserId = adminUser?.id;
+    if (!adminUserId) {
+      adminUserId = uuidv4();
+      db.execute(`
+        INSERT INTO users (id, email, password_hash, first_name, last_name, phone, is_active, created_at, updated_at)
+        VALUES (?, ?, ?, 'Ibrihim', 'Jalloh', '+1-555-0100', 1, ?, ?)
+      `, [adminUserId, adminEmail, hash, now, now]);
+    } else {
+      db.execute(`
+        UPDATE users SET password_hash = ?, is_active = 1, updated_at = ? WHERE id = ?
+      `, [hash, now, adminUserId]);
+    }
+
+    // Ensure organization_users has OWNER role for adminUser
+    const orgUser = db.queryOne<{ id: string }>('SELECT id FROM organization_users WHERE organization_id = ? AND user_id = ?', [orgId, adminUserId]);
+    if (!orgUser) {
+      db.execute(`
+        INSERT INTO organization_users (id, organization_id, user_id, role, is_active, activated_at, created_at, updated_at)
+        VALUES (?, ?, ?, 'OWNER', 1, ?, ?, ?)
+      `, [uuidv4(), orgId, adminUserId, now, now, now]);
+    } else {
+      db.execute(`
+        UPDATE organization_users SET role = 'OWNER', is_active = 1, updated_at = ? WHERE id = ?
+      `, [now, orgUser.id]);
+    }
+
+    console.log('✅ Guaranteed Master Admin active: admin@nyccleaning.com / Password123!');
+  } catch (err) {
+    console.error('⚠️ Master admin verification error:', err);
+  }
+
   // One-time cleanup: remove any employee records where the linked user has OWNER role
   // This prevents the Owner from being counted or displayed as a cleaner/staff member
   try {
@@ -107,35 +160,6 @@ export async function startServer(port: number = 4000) {
     console.log('✅ Owner employee record cleanup complete.');
   } catch (err) {
     console.error('⚠️ Owner cleanup warning (non-fatal):', err);
-  }
-
-  // Pilot Safety: Always ensure admin@nyccleaning.com has the correct password and is active.
-  // This runs on every restart so the Owner can always log in during the 14-day trial.
-  try {
-    const { hashSync } = await import('bcryptjs');
-    const adminEmail = 'admin@nyccleaning.com';
-    const adminPassword = 'Password123!';
-    const adminHash = hashSync(adminPassword, 10);
-
-    const adminUser = db.queryOne<{ id: string }>('SELECT id FROM users WHERE LOWER(email) = ?', [adminEmail]);
-    if (adminUser) {
-      db.execute(
-        'UPDATE users SET password_hash = ?, is_active = 1, updated_at = ? WHERE id = ?',
-        [adminHash, new Date().toISOString(), adminUser.id]
-      );
-      db.execute(
-        'UPDATE organization_users SET is_active = 1 WHERE user_id = ?',
-        [adminUser.id]
-      );
-      console.log('✅ Admin account verified and password ensured: admin@nyccleaning.com / Password123!');
-    } else {
-      // Admin user missing entirely — re-initialize
-      console.log('⚠️ Admin user missing — re-initializing production database...');
-      await initProductionDatabase();
-      console.log('✅ Database re-initialized: admin@nyccleaning.com / Password123!');
-    }
-  } catch (err) {
-    console.error('⚠️ Admin password ensure warning (non-fatal):', err);
   }
 
   const app = createApp();

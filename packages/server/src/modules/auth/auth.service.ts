@@ -44,7 +44,7 @@ export class AuthService {
     organization: Organization;
     availableOrganizations: { id: string; name: string; slug: string; role: UserRole }[];
   }> {
-    const user = db.queryOne<User>('SELECT * FROM users WHERE email = ?', [email.toLowerCase().trim()]);
+    const user = db.queryOne<User>('SELECT * FROM users WHERE LOWER(email) = LOWER(?)', [email.trim()]);
     if (!user) {
       throw new Error('Invalid email or password');
     }
