@@ -95,6 +95,26 @@ export const EmployeesPage: React.FC = () => {
     fetchBuildings();
   }, [search, selectedStatus, organization?.id]);
 
+  const generateNewEmpCode = () => {
+    const randomNum = Math.floor(10000 + Math.random() * 90000);
+    return `NYC-${randomNum}`;
+  };
+
+  const openAddEmployeeModal = () => {
+    setFormData({
+      employee_code: generateNewEmpCode(),
+      first_name: '',
+      last_name: '',
+      email: '',
+      phone: '',
+      password: 'Password123!',
+      employment_type: 'HOURLY',
+      hourly_rate: 20.00,
+      building_ids: []
+    });
+    setIsAddModalOpen(true);
+  };
+
   // Create Employee Handler
   const handleCreateEmployee = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -111,9 +131,9 @@ export const EmployeesPage: React.FC = () => {
       });
       setIsCredentialsModalOpen(true);
 
-      // Reset form
+      // Reset form with a fresh random employee code for the next employee
       setFormData({
-        employee_code: '',
+        employee_code: generateNewEmpCode(),
         first_name: '',
         last_name: '',
         email: '',
@@ -290,11 +310,7 @@ export const EmployeesPage: React.FC = () => {
               <span>Bulk Excel Import</span>
             </button>
             <button
-              onClick={() => {
-                const timestamp = Date.now().toString().slice(-5);
-                setFormData(prev => ({ ...prev, employee_code: `NYC-${timestamp}` }));
-                setIsAddModalOpen(true);
-              }}
+              onClick={openAddEmployeeModal}
               className="px-3.5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-semibold flex items-center gap-2 shadow-lg shadow-blue-500/20 transition"
             >
               <UserPlus className="w-4 h-4" />
