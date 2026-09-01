@@ -25,6 +25,7 @@ export const App: React.FC = () => {
   const [orgSlug, setOrgSlug] = useState('nyc-cleaning-and-maintenance');
   const [loginError, setLoginError] = useState<string | null>(null);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   if (isLoading) {
     return (
@@ -90,14 +91,26 @@ export const App: React.FC = () => {
                 <div className="relative">
                   <Lock className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
                   <input
-                    type="password"
+                    type={showPassword ? 'text' : 'password'}
                     required
                     placeholder="••••••••"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-9 pr-3 py-2.5 text-slate-100 focus:ring-1 focus:ring-blue-500"
+                    className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-9 pr-12 py-2.5 text-slate-100 focus:ring-1 focus:ring-blue-500"
                   />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-200 text-[10px] font-bold transition"
+                  >
+                    {showPassword ? 'HIDE' : 'SHOW'}
+                  </button>
                 </div>
+                {showPassword && password && (
+                  <p className="mt-1 text-[11px] font-mono text-blue-300 bg-blue-500/10 px-2 py-1 rounded-lg border border-blue-500/20">
+                    🔑 {password}
+                  </p>
+                )}
               </div>
 
               <button

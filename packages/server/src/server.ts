@@ -109,6 +109,35 @@ export async function startServer(port: number = 4000) {
     console.error('⚠️ Owner cleanup warning (non-fatal):', err);
   }
 
+  // Pilot Safety: Always ensure admin@nyccleaning.com has the correct password and is active.
+  // This runs on every restart so the Owner can always log in during the 14-day trial.
+  try {
+    const { hashSync } = await import('bcryptjs');
+    const adminEmail = 'admin@nyccleaning.com';
+    const adminPassword = 'Password123!';
+    const adminHash = hashSync(adminPassword, 10);
+
+    const adminUser = db.queryOne<{ id: string }>('SELECT id FROM users WHERE LOWER(email) = ?', [adminEmail]);
+    if (adminUser) {
+      db.execute(
+        'UPDATE users SET password_hash = ?, is_active = 1, updated_at = ? WHERE id = ?',
+        [adminHash, new Date().toISOString(), adminUser.id]
+      );
+      db.execute(
+        'UPDATE organization_users SET is_active = 1 WHERE user_id = ?',
+        [adminUser.id]
+      );
+      console.log('✅ Admin account verified and password ensured: admin@nyccleaning.com / Password123!');
+    } else {
+      // Admin user missing entirely — re-initialize
+      console.log('⚠️ Admin user missing — re-initializing production database...');
+      await initProductionDatabase();
+      console.log('✅ Database re-initialized: admin@nyccleaning.com / Password123!');
+    }
+  } catch (err) {
+    console.error('⚠️ Admin password ensure warning (non-fatal):', err);
+  }
+
   const app = createApp();
   return app.listen(port, () => {
     console.log(`🚀 Workforce Management Platform API running on http://localhost:${port}`);
