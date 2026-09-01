@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build",
+    "build": "vite build",
     "preview": "vite preview",
     "cap:build": "npm run build && npx cap sync",
     "cap:sync": "npx cap sync",

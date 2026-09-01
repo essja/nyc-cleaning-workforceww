@@ -1,5 +1,5 @@
-# Production Dockerfile for Workforce Platform (Client + Server All-In-One)
-FROM node:24-alpine AS builder
+# Multi-stage production build for Workforce Hub (Client + Server)
+FROM node:22-alpine AS builder
 
 WORKDIR /app
 COPY package*.json ./
@@ -8,14 +8,14 @@ COPY packages/client/package*.json ./packages/client/
 
 RUN npm install
 
-COPY packages/server ./packages/server
 COPY packages/client ./packages/client
+COPY packages/server ./packages/server
 
-# Build both client and server
+# Build client and server
 RUN npm run build --workspace=packages/client
 RUN npm run build --workspace=packages/server
 
-FROM node:24-alpine AS runner
+FROM node:22-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 
@@ -30,7 +30,7 @@ COPY --from=builder /app/packages/client/dist ./packages/client/dist
 # Ensure database directory exists
 RUN mkdir -p /app/packages/server/data
 
-ENV PORT=4000
-EXPOSE 4000
+ENV PORT=10000
+EXPOSE 10000
 
 CMD ["node", "packages/server/dist/server.js"]
