@@ -8,7 +8,7 @@ export interface ApiResponse<T = any> {
 }
 
 class ApiClient {
-  private baseUrl = '/api/v1';
+  private baseUrl = (import.meta.env.VITE_API_URL ? `${import.meta.env.VITE_API_URL}/api/v1` : '/api/v1');
   private token: string | null = null;
   private organizationId: string | null = null;
 
