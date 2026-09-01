@@ -1,6 +1,8 @@
 import { Router, Request, Response } from 'express';
 import { BuildingsService } from './buildings.service.js';
 import { authenticateToken, requireRoles, requireBuildingScope } from '../../middleware/auth.middleware.js';
+import { db } from '../../db/index.js';
+import { v4 as uuidv4 } from 'uuid';
 import { z } from 'zod';
 
 const router = Router();

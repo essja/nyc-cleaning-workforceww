@@ -67,7 +67,7 @@ export class EmailService {
     // 1. Record in database notifications table
     db.execute(`
       INSERT INTO notifications (id, organization_id, user_id, title, message, type, is_read, created_at)
-      VALUES (?, ?, ?, ?, ?, 'SYSTEM', 0, datetime('now'))
+      VALUES (?, ?, ?, ?, ?, 'INFO', 0, datetime('now'))
     `, [uuidv4(), options.organizationId, options.userId, subject, `Account invitation sent to ${options.to}`]);
 
     // 2. Dispatch email if SMTP configured
