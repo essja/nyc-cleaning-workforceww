@@ -24,6 +24,19 @@ export interface OrganizationContextData {
 }
 
 interface AuthContextType {
+  // Admin Portal State
+  adminUser: UserContextData | null;
+  adminOrg: OrganizationContextData | null;
+  loginAdmin: (email: string, password: string) => Promise<void>;
+  logoutAdmin: () => void;
+
+  // Employee Portal State
+  employeeUser: UserContextData | null;
+  employeeOrg: OrganizationContextData | null;
+  loginEmployee: (email: string, password: string) => Promise<void>;
+  logoutEmployee: () => void;
+
+  // Active Context (Scope-aware fallback for compatibility)
   user: UserContextData | null;
   organization: OrganizationContextData | null;
   availableOrganizations: { id: string; name: string; slug: string; role: string }[];
@@ -32,15 +45,18 @@ interface AuthContextType {
   offlineQueueCount: number;
   login: (email: string, password: string, orgSlug?: string) => Promise<void>;
   logout: () => void;
-  switchOrganization: (orgSlug: string) => Promise<void>;
   refreshOfflineCount: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<UserContextData | null>(null);
-  const [organization, setOrganization] = useState<OrganizationContextData | null>(null);
+  const [adminUser, setAdminUser] = useState<UserContextData | null>(null);
+  const [adminOrg, setAdminOrg] = useState<OrganizationContextData | null>(null);
+
+  const [employeeUser, setEmployeeUser] = useState<UserContextData | null>(null);
+  const [employeeOrg, setEmployeeOrg] = useState<OrganizationContextData | null>(null);
+
   const [availableOrganizations, setAvailableOrganizations] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isOnline, setIsOnline] = useState<boolean>(navigator.onLine);
@@ -53,33 +69,73 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     const handleOnline = () => {
       setIsOnline(true);
-      // Attempt auto-sync of offline queue
       api.syncOfflinePunches().then(() => refreshOfflineCount());
     };
     const handleOffline = () => setIsOnline(false);
 
+    const handleUnauthorized = (e: any) => {
+      const scope = e?.detail?.scope;
+      if (scope === 'employee') {
+        setEmployeeUser(null);
+        setEmployeeOrg(null);
+      } else {
+        setAdminUser(null);
+        setAdminOrg(null);
+      }
+    };
+
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
+    window.addEventListener('auth:unauthorized', handleUnauthorized);
 
-    // Initial me request if token exists
     const initAuth = async () => {
-      if (api.getToken()) {
+      // 1. Verify Admin Session if admin token exists
+      const adminToken = api.getToken('admin');
+      if (adminToken) {
         try {
-          const res = await api.get('/auth/me');
-          setUser(res.user);
-          setOrganization({
+          const res = await api.request('/auth/me', {
+            headers: { Authorization: `Bearer ${adminToken}` }
+          });
+          const adminRoles = ['OWNER', 'ADMIN', 'HR_MANAGER'];
+          if (adminRoles.includes(res.user.role)) {
+            setAdminUser(res.user);
+            setAdminOrg({
+              id: res.user.orgId,
+              name: 'NYC Cleaning and Maintenance',
+              slug: res.user.orgSlug || 'nyc-cleaning-and-maintenance',
+              work_week_start: 0,
+              timezone: 'America/New_York',
+              currency: 'USD'
+            });
+          } else {
+            api.setToken(null, 'admin');
+          }
+        } catch {
+          api.setToken(null, 'admin');
+        }
+      }
+
+      // 2. Verify Employee Session if employee token exists
+      const employeeToken = api.getToken('employee');
+      if (employeeToken) {
+        try {
+          const res = await api.request('/auth/me', {
+            headers: { Authorization: `Bearer ${employeeToken}` }
+          });
+          setEmployeeUser(res.user);
+          setEmployeeOrg({
             id: res.user.orgId,
-            name: res.user.orgSlug === 'apex-facility' ? 'Apex Facility Solutions' : 'Prime Property Services',
-            slug: res.user.orgSlug,
-            work_week_start: res.user.orgSlug === 'apex-facility' ? 0 : 1,
+            name: 'NYC Cleaning and Maintenance',
+            slug: res.user.orgSlug || 'nyc-cleaning-and-maintenance',
+            work_week_start: 0,
             timezone: 'America/New_York',
             currency: 'USD'
           });
         } catch {
-          api.setToken(null);
-          setUser(null);
+          api.setToken(null, 'employee');
         }
       }
+
       setIsLoading(false);
       refreshOfflineCount();
     };
@@ -89,52 +145,95 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
+      window.removeEventListener('auth:unauthorized', handleUnauthorized);
     };
   }, []);
 
-  const login = async (email: string, password: string, orgSlug?: string) => {
-    const res = await api.post('/auth/login', { email, password, orgSlug });
-    api.setToken(res.accessToken);
-    api.setOrganizationId(res.organization.id);
-    setUser(res.user);
-    setOrganization(res.organization);
+  // Dedicated Admin Login
+  const loginAdmin = async (email: string, password: string) => {
+    const res = await api.post('/auth/login/admin', {
+      email: email.trim().toLowerCase(),
+      password: password.trim()
+    });
+    api.setToken(res.accessToken, 'admin');
+    api.setOrganizationId(res.organization.id, 'admin');
+    setAdminUser(res.user);
+    setAdminOrg(res.organization);
     setAvailableOrganizations(res.availableOrganizations || []);
   };
 
-  const logout = () => {
+  // Dedicated Admin Logout
+  const logoutAdmin = () => {
     api.post('/auth/logout').catch(() => {});
-    api.setToken(null);
-    api.setOrganizationId(null);
-    setUser(null);
-    setOrganization(null);
+    api.setToken(null, 'admin');
+    api.setOrganizationId(null, 'admin');
+    setAdminUser(null);
+    setAdminOrg(null);
   };
 
-  const switchOrganization = async (orgSlug: string) => {
-    if (!user) return;
-    // Re-login with same credentials or token refresh for tenant
-    try {
-      const res = await api.post('/auth/login', { email: user.email, password: 'Password123!', orgSlug });
-      api.setToken(res.accessToken);
-      api.setOrganizationId(res.organization.id);
-      setUser(res.user);
-      setOrganization(res.organization);
-    } catch (err: any) {
-      alert(`Could not switch to organization: ${err.message}`);
+  // Dedicated Employee Login
+  const loginEmployee = async (email: string, password: string) => {
+    const res = await api.post('/auth/login/employee', {
+      email: email.trim().toLowerCase(),
+      password: password.trim()
+    });
+    api.setToken(res.accessToken, 'employee');
+    api.setOrganizationId(res.organization.id, 'employee');
+    setEmployeeUser(res.user);
+    setEmployeeOrg(res.organization);
+  };
+
+  // Dedicated Employee Logout
+  const logoutEmployee = () => {
+    api.post('/auth/logout').catch(() => {});
+    api.setToken(null, 'employee');
+    api.setOrganizationId(null, 'employee');
+    setEmployeeUser(null);
+    setEmployeeOrg(null);
+  };
+
+  // Generic fallback methods
+  const isEmployeeScope = typeof window !== 'undefined' && window.location.pathname.startsWith('/employee');
+  const activeUser = isEmployeeScope ? (employeeUser || adminUser) : (adminUser || employeeUser);
+  const activeOrg = isEmployeeScope ? (employeeOrg || adminOrg) : (adminOrg || employeeOrg);
+
+  const login = async (email: string, password: string, orgSlug?: string) => {
+    if (isEmployeeScope) {
+      await loginEmployee(email, password);
+    } else {
+      await loginAdmin(email, password);
+    }
+  };
+
+  const logout = () => {
+    if (isEmployeeScope) {
+      logoutEmployee();
+    } else {
+      logoutAdmin();
     }
   };
 
   return (
     <AuthContext.Provider
       value={{
-        user,
-        organization,
+        adminUser,
+        adminOrg,
+        loginAdmin,
+        logoutAdmin,
+
+        employeeUser,
+        employeeOrg,
+        loginEmployee,
+        logoutEmployee,
+
+        user: activeUser,
+        organization: activeOrg,
         availableOrganizations,
         isLoading,
         isOnline,
         offlineQueueCount,
         login,
         logout,
-        switchOrganization,
         refreshOfflineCount
       }}
     >

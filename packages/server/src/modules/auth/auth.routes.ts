@@ -25,7 +25,65 @@ const activateSchema = z.object({
   password: z.string().min(8)
 });
 
-// Login
+// Dedicated Admin/Owner Login Route
+router.post('/login/admin', async (req: Request, res: Response) => {
+  try {
+    const { email, password, orgSlug } = loginSchema.parse(req.body);
+    const ip = req.ip || req.socket.remoteAddress;
+    const userAgent = req.headers['user-agent'];
+
+    const result = await AuthService.loginAdmin(email, password, orgSlug, ip, userAgent);
+
+    res.cookie('accessToken', result.accessToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 15 * 60 * 1000 // 15 mins
+    });
+
+    res.cookie('refreshToken', result.refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
+    });
+
+    res.json(result);
+  } catch (err: any) {
+    res.status(400).json({ error: err.message || 'Administrator login failed' });
+  }
+});
+
+// Dedicated Employee Portal Login Route
+router.post('/login/employee', async (req: Request, res: Response) => {
+  try {
+    const { email, password, orgSlug } = loginSchema.parse(req.body);
+    const ip = req.ip || req.socket.remoteAddress;
+    const userAgent = req.headers['user-agent'];
+
+    const result = await AuthService.loginEmployee(email, password, orgSlug, ip, userAgent);
+
+    res.cookie('accessToken', result.accessToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 15 * 60 * 1000 // 15 mins
+    });
+
+    res.cookie('refreshToken', result.refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
+    });
+
+    res.json(result);
+  } catch (err: any) {
+    res.status(400).json({ error: err.message || 'Employee login failed' });
+  }
+});
+
+// General Fallback Login
 router.post('/login', async (req: Request, res: Response) => {
   try {
     const { email, password, orgSlug } = loginSchema.parse(req.body);

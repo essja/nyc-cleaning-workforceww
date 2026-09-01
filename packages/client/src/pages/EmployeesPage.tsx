@@ -107,7 +107,7 @@ export const EmployeesPage: React.FC = () => {
         name: `${created.first_name} ${created.last_name}`,
         email: created.email || formData.email,
         password: formData.password || 'Password123!',
-        appUrl: window.location.origin
+        appUrl: `${window.location.origin}/employee/login`
       });
       setIsCredentialsModalOpen(true);
 
@@ -219,7 +219,7 @@ export const EmployeesPage: React.FC = () => {
   // Copy login instructions to clipboard
   const handleCopyInstructions = () => {
     if (!createdCredentials) return;
-    const text = `🏢 Welcome to NYC Cleaning & Maintenance!\n\nHere is your permanent account to clock in and view your schedule:\n\n📱 App Link: ${createdCredentials.appUrl}\n📧 Login Email: ${createdCredentials.email}\n🔑 Password: ${createdCredentials.password}\n\nOpen the app link on your phone, log in, and tap "Clock In" with Apple FaceID / Fingerprint!`;
+    const text = `🏢 Welcome to NYC Cleaning & Maintenance!\n\nHere is your employee portal link to clock in and view your schedule:\n\n📱 Portal Link: ${createdCredentials.appUrl}\n📧 Login Email: ${createdCredentials.email}\n🔑 Password: ${createdCredentials.password}\n\nOpen the link on your phone, sign in, and tap "Clock In" with device GPS & biometrics!`;
     navigator.clipboard.writeText(text);
     setCopiedInstructions(true);
     setTimeout(() => setCopiedInstructions(false), 3000);
@@ -451,9 +451,9 @@ export const EmployeesPage: React.FC = () => {
 
             <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 space-y-2.5 text-xs">
               <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-                <span className="text-slate-400">📱 Mobile Web App:</span>
-                <a href={createdCredentials.appUrl} target="_blank" rel="noreferrer" className="text-blue-400 font-bold hover:underline flex items-center gap-1 font-mono text-[11px]">
-                  <span>Open App</span>
+                <span className="text-slate-400">📱 Employee Portal URL:</span>
+                <a href={createdCredentials.appUrl} target="_blank" rel="noreferrer" className="text-emerald-400 font-bold hover:underline flex items-center gap-1 font-mono text-[11px]">
+                  <span>/employee/login</span>
                   <ExternalLink className="w-3 h-3" />
                 </a>
               </div>

@@ -1,5 +1,5 @@
 /**
- * Production API Client & Offline Storage Engine
+ * Production API Client & Portal-Scoped Offline Storage Engine
  */
 
 export interface ApiResponse<T = any> {
@@ -9,34 +9,66 @@ export interface ApiResponse<T = any> {
 
 class ApiClient {
   private baseUrl = (import.meta.env.VITE_API_URL ? `${import.meta.env.VITE_API_URL}/api/v1` : '/api/v1');
-  private token: string | null = null;
-  private organizationId: string | null = null;
 
-  constructor() {
-    this.token = localStorage.getItem('auth_token');
-    this.organizationId = localStorage.getItem('active_org_id');
+  public getPortalScope(): 'admin' | 'employee' {
+    if (typeof window !== 'undefined' && window.location.pathname.startsWith('/employee')) {
+      return 'employee';
+    }
+    return 'admin';
   }
 
-  public setToken(token: string | null) {
-    this.token = token;
-    if (token) {
-      localStorage.setItem('auth_token', token);
+  public getToken(scope?: 'admin' | 'employee'): string | null {
+    const s = scope || this.getPortalScope();
+    if (s === 'employee') {
+      return localStorage.getItem('employee_auth_token');
+    }
+    return localStorage.getItem('admin_auth_token') || localStorage.getItem('auth_token');
+  }
+
+  public setToken(token: string | null, scope?: 'admin' | 'employee') {
+    const s = scope || this.getPortalScope();
+    if (s === 'employee') {
+      if (token) {
+        localStorage.setItem('employee_auth_token', token);
+      } else {
+        localStorage.removeItem('employee_auth_token');
+      }
     } else {
-      localStorage.removeItem('auth_token');
+      if (token) {
+        localStorage.setItem('admin_auth_token', token);
+        localStorage.setItem('auth_token', token);
+      } else {
+        localStorage.removeItem('admin_auth_token');
+        localStorage.removeItem('auth_token');
+      }
     }
   }
 
-  public setOrganizationId(orgId: string | null) {
-    this.organizationId = orgId;
-    if (orgId) {
-      localStorage.setItem('active_org_id', orgId);
-    } else {
-      localStorage.removeItem('active_org_id');
+  public getOrganizationId(scope?: 'admin' | 'employee'): string | null {
+    const s = scope || this.getPortalScope();
+    if (s === 'employee') {
+      return localStorage.getItem('employee_active_org_id');
     }
+    return localStorage.getItem('admin_active_org_id') || localStorage.getItem('active_org_id');
   }
 
-  public getToken() {
-    return this.token;
+  public setOrganizationId(orgId: string | null, scope?: 'admin' | 'employee') {
+    const s = scope || this.getPortalScope();
+    if (s === 'employee') {
+      if (orgId) {
+        localStorage.setItem('employee_active_org_id', orgId);
+      } else {
+        localStorage.removeItem('employee_active_org_id');
+      }
+    } else {
+      if (orgId) {
+        localStorage.setItem('admin_active_org_id', orgId);
+        localStorage.setItem('active_org_id', orgId);
+      } else {
+        localStorage.removeItem('admin_active_org_id');
+        localStorage.removeItem('active_org_id');
+      }
+    }
   }
 
   public async request<T = any>(endpoint: string, options: RequestInit = {}): Promise<T> {
@@ -45,11 +77,14 @@ class ApiClient {
       ...(options.headers as Record<string, string> || {})
     };
 
-    if (this.token) {
-      headers['Authorization'] = `Bearer ${this.token}`;
+    const token = this.getToken();
+    const orgId = this.getOrganizationId();
+
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
     }
-    if (this.organizationId) {
-      headers['X-Organization-Id'] = this.organizationId;
+    if (orgId) {
+      headers['X-Organization-Id'] = orgId;
     }
 
     try {
@@ -59,9 +94,9 @@ class ApiClient {
       });
 
       if (response.status === 401 && !endpoint.includes('/auth/login')) {
-        // Clear session on 401
-        this.setToken(null);
-        window.dispatchEvent(new Event('auth:unauthorized'));
+        const scope = this.getPortalScope();
+        this.setToken(null, scope);
+        window.dispatchEvent(new CustomEvent('auth:unauthorized', { detail: { scope } }));
       }
 
       if (options.headers && (options.headers as any)['Accept'] === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') {

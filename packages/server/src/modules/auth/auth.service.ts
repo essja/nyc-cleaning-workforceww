@@ -181,6 +181,40 @@ export class AuthService {
   }
 
   /**
+   * Dedicated Admin/Owner Portal Login
+   * Strictly enforces administrative roles (OWNER, ADMIN, HR_MANAGER)
+   */
+  public static async loginAdmin(
+    email: string,
+    password: string,
+    orgSlug?: string,
+    ipAddress?: string,
+    userAgent?: string
+  ) {
+    const result = await this.login(email, password, orgSlug, ipAddress, userAgent);
+    const adminRoles: UserRole[] = ['OWNER', 'ADMIN', 'HR_MANAGER'];
+    if (!adminRoles.includes(result.user.role)) {
+      throw new Error('Access denied. This account does not have administrator privileges. Please sign in via the Employee Portal at /employee/login.');
+    }
+    return result;
+  }
+
+  /**
+   * Dedicated Employee Portal Login
+   * Authenticates active employee personnel
+   */
+  public static async loginEmployee(
+    email: string,
+    password: string,
+    orgSlug?: string,
+    ipAddress?: string,
+    userAgent?: string
+  ) {
+    const result = await this.login(email, password, orgSlug, ipAddress, userAgent);
+    return result;
+  }
+
+  /**
    * Refresh JWT Access Token
    */
   public static async refreshAccessToken(refreshToken: string): Promise<{ accessToken: string; user: AuthenticatedRequestUser }> {

@@ -8,7 +8,10 @@ import {
 } from 'lucide-react';
 
 export const EmployeeMobileApp: React.FC = () => {
-  const { user, organization, logout } = useAuth();
+  const { employeeUser, employeeOrg, logoutEmployee } = useAuth();
+  const user = employeeUser;
+  const organization = employeeOrg;
+  const logout = logoutEmployee;
   const [currentTab, setCurrentTab] = useState<'HOME' | 'SCHEDULE' | 'HISTORY' | 'LEAVE'>('HOME');
   const [activeSession, setActiveSession] = useState<any | null>(null);
   const [todayShift, setTodayShift] = useState<any | null>(null);
