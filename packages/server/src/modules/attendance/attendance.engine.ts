@@ -71,10 +71,18 @@ export class AttendanceEngine {
         `, [employeeId]);
         targetBuildingId = primaryBld?.building_id;
       }
+
+      // If still no building assigned, fallback to first active company building in the organization
+      if (!targetBuildingId) {
+        const companyBld = db.queryOne<{ id: string }>(`
+          SELECT id FROM buildings WHERE organization_id = ? AND is_active = 1 LIMIT 1
+        `, [orgId]);
+        targetBuildingId = companyBld?.id;
+      }
     }
 
     if (!targetBuildingId) {
-      throw new Error('No target building found or assigned for attendance verification');
+      throw new Error('No facilities configured for your company yet. Please ask your administrator to add a building in the admin portal.');
     }
 
     const building = db.queryOne<Building>(
