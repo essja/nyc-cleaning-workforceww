@@ -1,0 +1,28 @@
+{
+  "name": "workforce-management-platform",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Enterprise Multi-Tenant Workforce Management Platform",
+  "scripts": {
+    "build": "npm run build --workspace=packages/server && npm run build --workspace=packages/client",
+    "dev:server": "npm run dev --workspace=packages/server",
+    "dev:client": "npm run dev --workspace=packages/client",
+    "test": "npm run test --workspace=packages/server",
+    "db:migrate": "npm run db:migrate --workspace=packages/server",
+    "db:seed": "npm run db:seed --workspace=packages/server"
+  },
+  "workspaces": [
+    "packages/server",
+    "packages/client"
+  ],
+  "keywords": [
+    "workforce-management",
+    "attendance",
+    "geofence",
+    "biometrics",
+    "payroll",
+    "scheduling"
+  ],
+  "author": "Antigravity",
+  "license": "UNLICENSED"
+}

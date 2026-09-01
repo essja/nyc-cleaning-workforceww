@@ -1,0 +1,25 @@
+# Multi-stage production build for Workforce Server
+FROM node:24-alpine AS builder
+
+WORKDIR /app
+COPY package*.json ./
+COPY packages/server/package*.json ./packages/server/
+
+RUN npm install
+
+COPY packages/server ./packages/server
+RUN npm run build --workspace=packages/server
+
+FROM node:24-alpine AS runner
+WORKDIR /app
+ENV NODE_ENV=production
+
+COPY package*.json ./
+COPY packages/server/package*.json ./packages/server/
+RUN npm install --omit=dev
+
+COPY --from=builder /app/packages/server/dist ./packages/server/dist
+COPY packages/server/src/db/schema.sql ./packages/server/dist/db/schema.sql
+
+EXPOSE 4000
+CMD ["node", "packages/server/dist/server.js"]

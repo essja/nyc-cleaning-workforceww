@@ -1,0 +1,56 @@
+version: '3.8'
+
+services:
+  # 1. PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: workforce_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: workforce_db
+      POSTGRES_USER: workforce_admin
+      POSTGRES_PASSWORD: secure_prod_password_2026
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U workforce_admin -d workforce_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # 2. Backend API & Central Attendance Engine
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile.server
+    container_name: workforce_server
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      DATABASE_URL: postgres://workforce_admin:secure_prod_password_2026@postgres:5432/workforce_db
+      JWT_SECRET: super_secure_enterprise_jwt_secret_key_2026
+      JWT_REFRESH_SECRET: super_secure_enterprise_refresh_secret_key_2026
+      CLIENT_URL: http://localhost:5173
+    ports:
+      - "4000:4000"
+
+  # 3. Client Frontend (Admin Web & Employee Mobile Portal)
+  client:
+    build:
+      context: .
+      dockerfile: Dockerfile.client
+    container_name: workforce_client
+    restart: unless-stopped
+    depends_on:
+      - server
+    ports:
+      - "5173:80"
+
+volumes:
+  pgdata:
