@@ -26,14 +26,38 @@ export interface EmployeeDetailView extends Employee {
   position?: Position | null;
   current_pay_rate?: number;
   assigned_buildings: { id: string; name: string; is_primary: boolean }[];
+  primary_building_name?: string;
   recent_sessions_count: number;
+}
+
+export interface FullEmployeeProfile {
+  employee: EmployeeDetailView;
+  attendanceStats: {
+    totalSessions: number;
+    presentDays: number;
+    lateArrivals: number;
+    recentSessions: any[];
+  };
+  leaveStats: {
+    totalRequests: number;
+    approvedCount: number;
+    pendingCount: number;
+    rejectedCount: number;
+    requests: any[];
+  };
+  account: {
+    hasLogin: boolean;
+    loginEmail: string | null;
+    role: string;
+    isActive: boolean;
+  };
 }
 
 export class EmployeesService {
   public static listEmployees(
     orgId: string,
     filters?: { departmentId?: string; status?: string; search?: string; buildingId?: string }
-  ): Employee[] {
+  ): EmployeeDetailView[] {
     let sql = `
       SELECT DISTINCT e.*
       FROM employees e
@@ -64,7 +88,46 @@ export class EmployeesService {
     }
 
     sql += ' ORDER BY e.last_name ASC, e.first_name ASC';
-    return db.query<Employee>(sql, params);
+    const rows = db.query<Employee>(sql, params);
+
+    return rows.map((e) => {
+      const payRate = db.queryOne<PayRate>(`
+        SELECT hourly_rate FROM pay_rates
+        WHERE organization_id = ? AND employee_id = ?
+        ORDER BY effective_from DESC LIMIT 1
+      `, [orgId, e.id]);
+
+      const assignedBuildings = db.query<{ id: string; name: string; is_primary: number }>(`
+        SELECT b.id, b.name, eb.is_primary
+        FROM buildings b
+        JOIN employee_buildings eb ON eb.building_id = b.id
+        WHERE eb.employee_id = ? AND b.organization_id = ?
+      `, [e.id, orgId]).map((b) => ({
+        id: b.id,
+        name: b.name,
+        is_primary: Boolean(b.is_primary)
+      }));
+
+      const primary = assignedBuildings.find((b) => b.is_primary)?.name || assignedBuildings[0]?.name || 'Unassigned';
+
+      const department = e.department_id
+        ? db.queryOne<Department>('SELECT * FROM departments WHERE id = ?', [e.department_id])
+        : null;
+
+      const position = e.position_id
+        ? db.queryOne<Position>('SELECT * FROM positions WHERE id = ?', [e.position_id])
+        : null;
+
+      return {
+        ...e,
+        department,
+        position,
+        current_pay_rate: payRate?.hourly_rate ?? 0,
+        assigned_buildings: assignedBuildings,
+        primary_building_name: primary,
+        recent_sessions_count: 0
+      };
+    });
   }
 
   public static getEmployeeDetails(orgId: string, employeeId: string): EmployeeDetailView {
@@ -100,6 +163,8 @@ export class EmployeesService {
       is_primary: Boolean(b.is_primary)
     }));
 
+    const primary = assignedBuildings.find((b) => b.is_primary)?.name || assignedBuildings[0]?.name || 'Unassigned';
+
     const sessionCount = db.queryOne<{ count: number }>(`
       SELECT COUNT(*) as count FROM attendance_sessions
       WHERE organization_id = ? AND employee_id = ?
@@ -111,7 +176,95 @@ export class EmployeesService {
       position,
       current_pay_rate: payRate?.hourly_rate ?? 0,
       assigned_buildings: assignedBuildings,
+      primary_building_name: primary,
       recent_sessions_count: sessionCount
+    };
+  }
+
+  public static getFullEmployeeProfile(orgId: string, employeeId: string): FullEmployeeProfile {
+    const detail = this.getEmployeeDetails(orgId, employeeId);
+
+    // Attendance stats
+    const totalSessionsRow = db.queryOne<{ count: number }>(
+      'SELECT COUNT(*) as count FROM attendance_sessions WHERE organization_id = ? AND employee_id = ?',
+      [orgId, employeeId]
+    );
+    const totalSessions = totalSessionsRow?.count || 0;
+
+    const presentDaysRow = db.queryOne<{ count: number }>(
+      'SELECT COUNT(DISTINCT session_date) as count FROM attendance_sessions WHERE organization_id = ? AND employee_id = ? AND status != "CANCELLED"',
+      [orgId, employeeId]
+    );
+    const presentDays = presentDaysRow?.count || 0;
+
+    const lateArrivalsRow = db.queryOne<{ count: number }>(
+      'SELECT COUNT(*) as count FROM attendance_sessions WHERE organization_id = ? AND employee_id = ? AND is_late = 1',
+      [orgId, employeeId]
+    );
+    const lateArrivals = lateArrivalsRow?.count || 0;
+
+    const recentSessions = db.query(`
+      SELECT s.*, b.name as building_name
+      FROM attendance_sessions s
+      LEFT JOIN buildings b ON b.id = s.building_id
+      WHERE s.organization_id = ? AND s.employee_id = ?
+      ORDER BY s.session_date DESC, s.check_in_time DESC
+      LIMIT 15
+    `, [orgId, employeeId]);
+
+    // Leave stats
+    const leaveRequests = db.query(`
+      SELECT r.*, lt.name as leave_type_name, lt.is_paid
+      FROM leave_requests r
+      LEFT JOIN leave_types lt ON lt.id = r.leave_type_id
+      WHERE r.organization_id = ? AND r.employee_id = ?
+      ORDER BY r.created_at DESC
+    `, [orgId, employeeId]);
+
+    const approvedCount = leaveRequests.filter((r: any) => r.status === 'APPROVED').length;
+    const pendingCount = leaveRequests.filter((r: any) => r.status === 'PENDING').length;
+    const rejectedCount = leaveRequests.filter((r: any) => r.status === 'REJECTED').length;
+
+    // Account info
+    let hasLogin = false;
+    let loginEmail: string | null = null;
+    let role = 'EMPLOYEE';
+    let isActive = detail.status === 'ACTIVE';
+
+    if (detail.user_id) {
+      const userRow = db.queryOne<{ email: string; is_active: number }>('SELECT email, is_active FROM users WHERE id = ?', [detail.user_id]);
+      if (userRow) {
+        hasLogin = true;
+        loginEmail = userRow.email;
+        isActive = Boolean(userRow.is_active);
+      }
+      const orgUser = db.queryOne<{ role: string }>('SELECT role FROM organization_users WHERE organization_id = ? AND user_id = ?', [orgId, detail.user_id]);
+      if (orgUser) {
+        role = orgUser.role;
+      }
+    }
+
+    return {
+      employee: detail,
+      attendanceStats: {
+        totalSessions,
+        presentDays,
+        lateArrivals,
+        recentSessions
+      },
+      leaveStats: {
+        totalRequests: leaveRequests.length,
+        approvedCount,
+        pendingCount,
+        rejectedCount,
+        requests: leaveRequests
+      },
+      account: {
+        hasLogin,
+        loginEmail: loginEmail || detail.email || null,
+        role,
+        isActive
+      }
     };
   }
 
@@ -139,7 +292,7 @@ export class EmployeesService {
         employeeId, orgId, data.employee_code.trim(), data.first_name.trim(), data.last_name.trim(),
         data.email?.toLowerCase().trim() || null, data.phone || null, data.department_id || null,
         data.position_id || null, data.manager_id || null, data.employment_type || 'HOURLY',
-        data.status || 'ACTIVE', data.hire_date || null, now, now
+        data.status || 'ACTIVE', data.hire_date || now.split('T')[0], now, now
       ]);
 
       if (data.hourly_rate !== undefined && data.hourly_rate > 0) {
@@ -170,9 +323,9 @@ export class EmployeesService {
           const rawPass = data.password && data.password.length >= 6 ? data.password : 'Password123!';
           const hash = bcrypt.hashSync(rawPass, 10);
           db.execute(`
-            INSERT INTO users (id, email, password_hash, first_name, last_name, is_active, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, 1, ?, ?)
-          `, [userId, normalizedEmail, hash, data.first_name.trim(), data.last_name.trim(), now, now]);
+            INSERT INTO users (id, email, password_hash, first_name, last_name, phone, is_active, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)
+          `, [userId, normalizedEmail, hash, data.first_name.trim(), data.last_name.trim(), data.phone || null, now, now]);
         }
 
         // Add to organization_users
@@ -214,41 +367,77 @@ export class EmployeesService {
     const now = new Date().toISOString();
 
     db.transaction(() => {
+      // 1. Update employees table
+      const updatedCode = data.employee_code?.trim() || existing.employee_code;
+      const updatedFirst = data.first_name?.trim() || existing.first_name;
+      const updatedLast = data.last_name?.trim() || existing.last_name;
+      const updatedEmail = data.email !== undefined ? (data.email?.toLowerCase().trim() || null) : existing.email;
+      const updatedPhone = data.phone !== undefined ? (data.phone || null) : existing.phone;
+      const updatedDept = data.department_id !== undefined ? (data.department_id || null) : existing.department_id;
+      const updatedPos = data.position_id !== undefined ? (data.position_id || null) : existing.position_id;
+      const updatedType = data.employment_type || existing.employment_type;
+      const updatedStatus = data.status || existing.status;
+      const updatedHireDate = data.hire_date || existing.hire_date;
+
       db.execute(`
         UPDATE employees SET
-          first_name = COALESCE(?, first_name),
-          last_name = COALESCE(?, last_name),
-          email = COALESCE(?, email),
-          phone = COALESCE(?, phone),
-          department_id = COALESCE(?, department_id),
-          position_id = COALESCE(?, position_id),
-          manager_id = COALESCE(?, manager_id),
-          employment_type = COALESCE(?, employment_type),
-          status = COALESCE(?, status),
-          hire_date = COALESCE(?, hire_date),
+          employee_code = ?,
+          first_name = ?,
+          last_name = ?,
+          email = ?,
+          phone = ?,
+          department_id = ?,
+          position_id = ?,
+          employment_type = ?,
+          status = ?,
+          hire_date = ?,
           updated_at = ?
         WHERE id = ? AND organization_id = ?
       `, [
-        data.first_name?.trim() || null,
-        data.last_name?.trim() || null,
-        data.email?.toLowerCase().trim() || null,
-        data.phone || null,
-        data.department_id || null,
-        data.position_id || null,
-        data.manager_id || null,
-        data.employment_type || null,
-        data.status || null,
-        data.hire_date || null,
+        updatedCode, updatedFirst, updatedLast, updatedEmail, updatedPhone,
+        updatedDept, updatedPos, updatedType, updatedStatus, updatedHireDate,
         now, employeeId, orgId
       ]);
 
-      if (data.hourly_rate !== undefined) {
+      // 2. Synchronize with users table if employee has user_id
+      if (existing.user_id) {
+        db.execute(`
+          UPDATE users SET
+            email = COALESCE(?, email),
+            first_name = ?,
+            last_name = ?,
+            phone = ?,
+            updated_at = ?
+          WHERE id = ?
+        `, [updatedEmail, updatedFirst, updatedLast, updatedPhone, now, existing.user_id]);
+      } else if (updatedEmail) {
+        // Create user login if email was added during edit
+        let existingUser = db.queryOne<{ id: string }>('SELECT id FROM users WHERE LOWER(email) = ?', [updatedEmail]);
+        let userId = existingUser?.id;
+        if (!userId) {
+          userId = uuidv4();
+          const hash = bcrypt.hashSync('Password123!', 10);
+          db.execute(`
+            INSERT INTO users (id, email, password_hash, first_name, last_name, phone, is_active, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)
+          `, [userId, updatedEmail, hash, updatedFirst, updatedLast, updatedPhone, now, now]);
+        }
+        db.execute(`
+          INSERT OR IGNORE INTO organization_users (id, organization_id, user_id, role, is_active, created_at, updated_at)
+          VALUES (?, ?, ?, 'EMPLOYEE', 1, ?, ?)
+        `, [uuidv4(), orgId, userId, now, now]);
+        db.execute('UPDATE employees SET user_id = ? WHERE id = ?', [userId, employeeId]);
+      }
+
+      // 3. Update pay rate
+      if (data.hourly_rate !== undefined && data.hourly_rate > 0) {
         db.execute(`
           INSERT INTO pay_rates (id, organization_id, employee_id, hourly_rate, effective_from)
           VALUES (?, ?, ?, ?, ?)
         `, [uuidv4(), orgId, employeeId, data.hourly_rate, now.split('T')[0]]);
       }
 
+      // 4. Update assigned buildings
       if (data.building_ids !== undefined) {
         db.execute('DELETE FROM employee_buildings WHERE employee_id = ?', [employeeId]);
         for (let i = 0; i < data.building_ids.length; i++) {
@@ -271,6 +460,105 @@ export class EmployeesService {
     });
 
     return this.getEmployeeDetails(orgId, employeeId);
+  }
+
+  public static resetEmployeePassword(
+    orgId: string,
+    actorUserId: string,
+    employeeId: string,
+    newPassword?: string
+  ): { success: boolean; newPassword?: string; message: string } {
+    const employee = db.queryOne<Employee>(
+      'SELECT * FROM employees WHERE organization_id = ? AND id = ?',
+      [orgId, employeeId]
+    );
+    if (!employee) throw new Error('Employee not found');
+
+    const passToSet = newPassword && newPassword.length >= 6
+      ? newPassword
+      : `NYC-${Math.random().toString(36).substring(2, 8)}!`;
+
+    const hash = bcrypt.hashSync(passToSet, 10);
+    const now = new Date().toISOString();
+
+    db.transaction(() => {
+      let userId = employee.user_id;
+
+      if (!userId && employee.email) {
+        const normalizedEmail = employee.email.toLowerCase().trim();
+        let existingUser = db.queryOne<{ id: string }>('SELECT id FROM users WHERE LOWER(email) = ?', [normalizedEmail]);
+        userId = existingUser?.id;
+        if (!userId) {
+          userId = uuidv4();
+          db.execute(`
+            INSERT INTO users (id, email, password_hash, first_name, last_name, is_active, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, 1, ?, ?)
+          `, [userId, normalizedEmail, hash, employee.first_name, employee.last_name, now, now]);
+        }
+        db.execute(`
+          INSERT OR IGNORE INTO organization_users (id, organization_id, user_id, role, is_active, created_at, updated_at)
+          VALUES (?, ?, ?, 'EMPLOYEE', 1, ?, ?)
+        `, [uuidv4(), orgId, userId, now, now]);
+        db.execute('UPDATE employees SET user_id = ? WHERE id = ?', [userId, employeeId]);
+      } else if (userId) {
+        db.execute('UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?', [hash, now, userId]);
+      } else {
+        throw new Error('Employee does not have an email address assigned. Please set an email first.');
+      }
+
+      AuditService.log({
+        organizationId: orgId,
+        actorUserId,
+        action: 'EMPLOYEE.RESET_PASSWORD',
+        entityType: 'employees',
+        entityId: employeeId,
+        afterState: { email: employee.email }
+      });
+    });
+
+    return {
+      success: true,
+      newPassword: passToSet,
+      message: `Password for ${employee.first_name} ${employee.last_name} has been successfully reset.`
+    };
+  }
+
+  public static deleteEmployee(orgId: string, actorUserId: string, employeeId: string): void {
+    const existing = db.queryOne<Employee>(
+      'SELECT * FROM employees WHERE organization_id = ? AND id = ?',
+      [orgId, employeeId]
+    );
+    if (!existing) throw new Error('Employee not found');
+
+    db.transaction(() => {
+      // Clean up relations
+      db.execute('DELETE FROM employee_buildings WHERE employee_id = ?', [employeeId]);
+      db.execute('DELETE FROM pay_rates WHERE employee_id = ? AND organization_id = ?', [employeeId, orgId]);
+      db.execute('DELETE FROM schedule_assignments WHERE employee_id = ? AND organization_id = ?', [employeeId, orgId]);
+      db.execute('DELETE FROM attendance_events WHERE employee_id = ? AND organization_id = ?', [employeeId, orgId]);
+      db.execute('DELETE FROM attendance_sessions WHERE employee_id = ? AND organization_id = ?', [employeeId, orgId]);
+      db.execute('DELETE FROM leave_requests WHERE employee_id = ? AND organization_id = ?', [employeeId, orgId]);
+      db.execute('DELETE FROM employee_device_enrollments WHERE employee_id = ? AND organization_id = ?', [employeeId, orgId]);
+
+      if (existing.user_id) {
+        db.execute('DELETE FROM organization_users WHERE user_id = ? AND organization_id = ?', [existing.user_id, orgId]);
+        const otherOrgs = db.queryOne<{ count: number }>('SELECT COUNT(*) as count FROM organization_users WHERE user_id = ?', [existing.user_id]);
+        if (!otherOrgs || otherOrgs.count === 0) {
+          db.execute('DELETE FROM users WHERE id = ?', [existing.user_id]);
+        }
+      }
+
+      db.execute('DELETE FROM employees WHERE id = ? AND organization_id = ?', [employeeId, orgId]);
+
+      AuditService.log({
+        organizationId: orgId,
+        actorUserId,
+        action: 'EMPLOYEE.DELETE',
+        entityType: 'employees',
+        entityId: employeeId,
+        beforeState: existing
+      });
+    });
   }
 
   public static archiveEmployee(orgId: string, actorUserId: string, employeeId: string): void {

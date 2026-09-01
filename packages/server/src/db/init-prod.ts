@@ -153,7 +153,7 @@ export async function initProductionDatabase(options: {
       posLeadSupervisorId, orgId, deptSupervisionId
     ]);
 
-    // 7. Master Admin User Account
+    // 7. Master Admin User Account (Purely administrative Owner, not counted as cleaning staff)
     const adminUserId = uuidv4();
     db.execute(`
       INSERT INTO users (id, email, password_hash, first_name, last_name, phone, is_active)
@@ -164,13 +164,6 @@ export async function initProductionDatabase(options: {
       INSERT INTO organization_users (id, organization_id, user_id, role, is_active, activated_at)
       VALUES (?, ?, ?, 'OWNER', 1, ?)
     `, [uuidv4(), orgId, adminUserId, now]);
-
-    // Admin Employee Profile
-    const adminEmpId = uuidv4();
-    db.execute(`
-      INSERT INTO employees (id, organization_id, user_id, employee_code, first_name, last_name, email, department_id, position_id, employment_type, status, hire_date)
-      VALUES (?, ?, ?, 'EMP-001', ?, ?, ?, ?, ?, 'SALARIED', 'ACTIVE', date('now'))
-    `, [adminEmpId, orgId, adminUserId, adminFirst, adminLast, adminEmail, deptSupervisionId, posLeadSupervisorId]);
 
     // 8. Overtime Rules
     db.execute(`

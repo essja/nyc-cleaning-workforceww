@@ -12,6 +12,7 @@ const createEmployeeSchema = z.object({
   last_name: z.string().min(1),
   email: z.string().email().optional().or(z.literal('')),
   phone: z.string().optional(),
+  password: z.string().optional(),
   department_id: z.string().optional(),
   position_id: z.string().optional(),
   manager_id: z.string().optional(),
@@ -20,6 +21,10 @@ const createEmployeeSchema = z.object({
   hire_date: z.string().optional(),
   hourly_rate: z.number().min(0).optional(),
   building_ids: z.array(z.string()).optional()
+});
+
+const resetPasswordSchema = z.object({
+  password: z.string().min(6).optional()
 });
 
 // List employees
@@ -43,7 +48,17 @@ router.get('/', authenticateToken, (req: Request, res: Response) => {
   }
 });
 
-// Get employee details
+// Get full employee profile
+router.get('/:id/full-profile', authenticateToken, (req: Request, res: Response) => {
+  try {
+    const profile = EmployeesService.getFullEmployeeProfile(req.user!.orgId, req.params.id as string);
+    res.json(profile);
+  } catch (err: any) {
+    res.status(404).json({ error: err.message || 'Employee not found' });
+  }
+});
+
+// Get single employee details
 router.get('/:id', authenticateToken, (req: Request, res: Response) => {
   try {
     const details = EmployeesService.getEmployeeDetails(req.user!.orgId, req.params.id as string);
@@ -78,6 +93,32 @@ router.put('/:id', authenticateToken, requireRoles('OWNER', 'ADMIN', 'HR_MANAGER
     res.json(employee);
   } catch (err: any) {
     res.status(400).json({ error: err.message || 'Failed to update employee' });
+  }
+});
+
+// Reset employee password (Owner/Admin)
+router.post('/:id/reset-password', authenticateToken, requireRoles('OWNER', 'ADMIN', 'HR_MANAGER'), (req: Request, res: Response) => {
+  try {
+    const parsed = resetPasswordSchema.parse(req.body);
+    const result = EmployeesService.resetEmployeePassword(
+      req.user!.orgId,
+      req.user!.userId,
+      req.params.id as string,
+      parsed.password
+    );
+    res.json(result);
+  } catch (err: any) {
+    res.status(400).json({ error: err.message || 'Failed to reset employee password' });
+  }
+});
+
+// Delete employee (Testing & Management)
+router.delete('/:id', authenticateToken, requireRoles('OWNER', 'ADMIN', 'HR_MANAGER'), (req: Request, res: Response) => {
+  try {
+    EmployeesService.deleteEmployee(req.user!.orgId, req.user!.userId, req.params.id as string);
+    res.json({ success: true, message: 'Employee successfully deleted' });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message || 'Failed to delete employee' });
   }
 });
 

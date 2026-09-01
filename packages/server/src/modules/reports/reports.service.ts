@@ -9,6 +9,42 @@ export interface DashboardMetrics {
   lateToday: number;
   absentToday: number;
   onLeaveToday: number;
+  presentStaffList: {
+    sessionId: string;
+    employeeId: string;
+    employeeName: string;
+    employeeCode: string;
+    buildingName: string;
+    checkInTime: string;
+    checkOutTime?: string;
+    status: string;
+    sessionDate: string;
+    isWithinGeofence: boolean;
+    biometricVerified: boolean;
+  }[];
+  lateArrivalsList: {
+    sessionId: string;
+    employeeId: string;
+    employeeName: string;
+    employeeCode: string;
+    buildingName: string;
+    scheduledStart: string;
+    checkInTime: string;
+    minutesLate: number;
+    sessionDate: string;
+  }[];
+  pendingLeaveList: {
+    id: string;
+    employeeId: string;
+    employeeName: string;
+    employeeCode: string;
+    leaveTypeName: string;
+    startDate: string;
+    endDate: string;
+    days: number;
+    reason: string;
+    createdAt: string;
+  }[];
   buildingsSummary: {
     id: string;
     name: string;
@@ -44,11 +80,13 @@ export class ReportsService {
   public static getDashboardMetrics(orgId: string, buildingId?: string): DashboardMetrics {
     const todayStr = new Date().toISOString().split('T')[0];
 
-    // 1. Total active employees
-    const totalEmpRow = db.queryOne<{ count: number }>(
-      'SELECT COUNT(*) as count FROM employees WHERE organization_id = ? AND status = ?',
-      [orgId, 'ACTIVE']
-    );
+    // 1. Total active staff (exclude pure administrative OWNER accounts)
+    const totalEmpRow = db.queryOne<{ count: number }>(`
+      SELECT COUNT(DISTINCT e.id) as count
+      FROM employees e
+      LEFT JOIN organization_users ou ON ou.user_id = e.user_id AND ou.organization_id = e.organization_id
+      WHERE e.organization_id = ? AND e.status = 'ACTIVE' AND (ou.role IS NULL OR ou.role != 'OWNER')
+    `, [orgId]);
     const totalEmployees = totalEmpRow?.count || 0;
 
     // 2. Scheduled today
@@ -85,6 +123,21 @@ export class ReportsService {
 
     let lateCount = 0;
     const anomalies: any[] = [];
+    const lateArrivalsList: any[] = [];
+
+    const presentStaffList = todaySessions.map((s) => ({
+      sessionId: s.id,
+      employeeId: s.employee_id,
+      employeeName: `${s.first_name} ${s.last_name}`,
+      employeeCode: s.employee_code,
+      buildingName: s.building_name,
+      checkInTime: s.check_in_time,
+      checkOutTime: s.check_out_time || undefined,
+      status: s.status,
+      sessionDate: s.session_date,
+      isWithinGeofence: Boolean(s.is_within_geofence),
+      biometricVerified: Boolean(s.biometric_verified)
+    }));
 
     for (const s of todaySessions) {
       let flags: string[] = [];
@@ -94,8 +147,21 @@ export class ReportsService {
         flags = [];
       }
 
-      if (flags.includes('LATE_ARRIVAL')) {
+      if (flags.includes('LATE_ARRIVAL') || s.is_late) {
         lateCount++;
+        const checkInDate = new Date(s.check_in_time);
+        const schedTime = s.scheduled_start_time || '08:00 AM';
+        lateArrivalsList.push({
+          sessionId: s.id,
+          employeeId: s.employee_id,
+          employeeName: `${s.first_name} ${s.last_name}`,
+          employeeCode: s.employee_code,
+          buildingName: s.building_name,
+          scheduledStart: schedTime,
+          checkInTime: s.check_in_time,
+          minutesLate: s.minutes_late || 15,
+          sessionDate: s.session_date
+        });
       }
 
       if (flags.length > 0) {
@@ -111,7 +177,7 @@ export class ReportsService {
       }
     }
 
-    // 4. Leave today
+    // 4. Leave today & Pending Leave requests
     const leaveRow = db.queryOne<{ count: number }>(`
       SELECT COUNT(DISTINCT employee_id) as count
       FROM leave_requests
@@ -119,6 +185,26 @@ export class ReportsService {
         AND start_date <= ? AND end_date >= ?
     `, [orgId, todayStr, todayStr]);
     const onLeaveToday = leaveRow?.count || 0;
+
+    const pendingLeaveList = db.query<any>(`
+      SELECT r.*, e.first_name, e.last_name, e.employee_code, lt.name as leave_type_name
+      FROM leave_requests r
+      JOIN employees e ON e.id = r.employee_id
+      JOIN leave_types lt ON lt.id = r.leave_type_id
+      WHERE r.organization_id = ? AND r.status = 'PENDING'
+      ORDER BY r.created_at DESC
+    `, [orgId]).map((r) => ({
+      id: r.id,
+      employeeId: r.employee_id,
+      employeeName: `${r.first_name} ${r.last_name}`,
+      employeeCode: r.employee_code,
+      leaveTypeName: r.leave_type_name,
+      startDate: r.start_date,
+      endDate: r.end_date,
+      days: r.days_requested || 1,
+      reason: r.reason || 'Personal Time Off',
+      createdAt: r.created_at
+    }));
 
     // 5. Absent today (scheduled but not present and not on approved leave)
     const absentToday = Math.max(0, scheduledToday - presentToday - onLeaveToday);
@@ -138,38 +224,36 @@ export class ReportsService {
         WHERE building_id = ? AND organization_id = ? AND session_date = ?
       `, [b.id, orgId, todayStr])?.count || 0;
 
-      const rate = scheduledAtBld > 0 ? Math.round((presentAtBld / scheduledAtBld) * 100) : (presentAtBld > 0 ? 100 : 0);
+      const staffingRate = scheduledAtBld > 0 ? Math.round((presentAtBld / scheduledAtBld) * 100) : (presentAtBld > 0 ? 100 : 0);
 
       return {
         id: b.id,
         name: b.name,
         scheduledCount: scheduledAtBld,
         presentCount: presentAtBld,
-        staffingRate: rate
+        staffingRate
       };
     });
 
-    // 7. Recent 15 attendance events
-    const recentEventsRows = db.query<any>(`
-      SELECT 
-        ae.id, ae.event_type, ae.timestamp, ae.source, ae.is_within_geofence,
-        ae.biometric_verified, e.first_name, e.last_name, b.name as building_name
+    // 7. Recent events
+    const recentEvents = db.query<any>(`
+      SELECT ae.id, ae.timestamp, ae.event_type, ae.source, ae.is_within_geofence, ae.biometric_verified,
+             e.first_name, e.last_name, b.name as building_name
       FROM attendance_events ae
       JOIN employees e ON e.id = ae.employee_id
       LEFT JOIN buildings b ON b.id = ae.building_id
       WHERE ae.organization_id = ?
-      ORDER BY ae.timestamp DESC LIMIT 15
-    `, [orgId]);
-
-    const recentEvents = recentEventsRows.map((r) => ({
-      id: r.id,
-      employeeName: `${r.first_name} ${r.last_name}`,
-      eventType: r.event_type,
-      buildingName: r.building_name || 'Unassigned Site',
-      timestamp: r.timestamp,
-      source: r.source,
-      isWithinGeofence: Boolean(r.is_within_geofence),
-      biometricVerified: Boolean(r.biometric_verified)
+      ORDER BY ae.timestamp DESC
+      LIMIT 10
+    `, [orgId]).map((e) => ({
+      id: e.id,
+      employeeName: `${e.first_name} ${e.last_name}`,
+      eventType: e.event_type,
+      buildingName: e.building_name || 'Downtown Headquarters',
+      timestamp: e.timestamp,
+      source: e.source,
+      isWithinGeofence: Boolean(e.is_within_geofence),
+      biometricVerified: Boolean(e.biometric_verified)
     }));
 
     return {
@@ -179,6 +263,9 @@ export class ReportsService {
       lateToday: lateCount,
       absentToday,
       onLeaveToday,
+      presentStaffList,
+      lateArrivalsList,
+      pendingLeaveList,
       buildingsSummary,
       recentEvents,
       anomalies
@@ -186,67 +273,48 @@ export class ReportsService {
   }
 
   /**
-   * Detailed Attendance Timesheet Report Query
+   * Timesheet Summary & Payroll Export Service
    */
-  public static getTimesheetReport(
-    orgId: string,
-    filters: { startDate: string; endDate: string; buildingId?: string; employeeId?: string }
-  ) {
+  public static getTimesheetReport(orgId: string, startDate: string, endDate: string, employeeId?: string): any[] {
     let sql = `
-      SELECT 
-        s.id, s.session_date, s.check_in_time, s.check_out_time,
-        s.total_work_minutes, s.total_break_minutes, s.regular_minutes,
-        s.overtime_minutes, s.status, s.anomaly_flags,
-        e.employee_code, e.first_name, e.last_name, e.employment_type,
-        b.name as building_name
+      SELECT s.*, e.employee_code, e.first_name, e.last_name, e.hourly_rate as base_rate,
+             b.name as building_name
       FROM attendance_sessions s
       JOIN employees e ON e.id = s.employee_id
       JOIN buildings b ON b.id = s.building_id
-      WHERE s.organization_id = ?
-        AND s.session_date >= ? AND s.session_date <= ?
+      WHERE s.organization_id = ? AND s.session_date >= ? AND s.session_date <= ?
     `;
-    const params: any[] = [orgId, filters.startDate, filters.endDate];
-
-    if (filters.buildingId) {
-      sql += ' AND s.building_id = ?';
-      params.push(filters.buildingId);
-    }
-    if (filters.employeeId) {
+    const params: any[] = [orgId, startDate, endDate];
+    if (employeeId) {
       sql += ' AND s.employee_id = ?';
-      params.push(filters.employeeId);
+      params.push(employeeId);
     }
-
     sql += ' ORDER BY s.session_date DESC, e.last_name ASC';
     return db.query(sql, params);
   }
 
   /**
-   * Export Timesheet to Excel Buffer
+   * Export Timesheets to Excel Buffer
    */
-  public static exportTimesheetExcel(
-    orgId: string,
-    filters: { startDate: string; endDate: string; buildingId?: string; employeeId?: string }
-  ): Buffer {
-    const records = this.getTimesheetReport(orgId, filters);
-    const rows = records.map((r: any) => ({
+  public static exportTimesheetsExcel(orgId: string, startDate: string, endDate: string): Buffer {
+    const records = this.getTimesheetReport(orgId, startDate, endDate);
+    const data = records.map((r) => ({
       'Date': r.session_date,
       'Employee Code': r.employee_code,
       'Employee Name': `${r.first_name} ${r.last_name}`,
-      'Building': r.building_name,
-      'Check In': r.check_in_time ? new Date(r.check_in_time).toLocaleTimeString() : '',
-      'Check Out': r.check_out_time ? new Date(r.check_out_time).toLocaleTimeString() : 'Active',
-      'Total Hours': Math.round((r.total_work_minutes / 60) * 100) / 100,
-      'Regular Hours': Math.round((r.regular_minutes / 60) * 100) / 100,
-      'Overtime Hours': Math.round((r.overtime_minutes / 60) * 100) / 100,
-      'Break Minutes': r.total_break_minutes,
+      'Facility / Building': r.building_name,
+      'Clock In': r.check_in_time ? new Date(r.check_in_time).toLocaleTimeString() : 'N/A',
+      'Clock Out': r.check_out_time ? new Date(r.check_out_time).toLocaleTimeString() : 'N/A',
+      'Total Hours': (r.total_work_minutes / 60).toFixed(2),
+      'Regular Hours': (r.regular_minutes / 60).toFixed(2),
+      'Overtime Hours': (r.overtime_minutes / 60).toFixed(2),
       'Status': r.status,
-      'Anomalies': r.anomaly_flags || ''
+      'Verified': r.biometric_verified ? 'YES' : 'NO'
     }));
 
-    const worksheet = XLSX.utils.json_to_sheet(rows);
+    const worksheet = XLSX.utils.json_to_sheet(data);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Timesheet Report');
-
     return XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
   }
 }
