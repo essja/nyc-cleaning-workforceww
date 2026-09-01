@@ -125,12 +125,6 @@ export const AdminLoginPage: React.FC<AdminLoginPageProps> = ({ onSuccess }) => 
               <span>{isLoading ? 'Authenticating Admin...' : 'Sign In to Admin Workspace'}</span>
             </button>
           </form>
-
-          <div className="pt-2 text-center border-t border-slate-800/80">
-            <p className="text-[11px] text-slate-500">
-              Are you a staff cleaner? Access your <a href="/employee/login" className="text-blue-400 hover:underline font-semibold">Employee Portal</a>
-            </p>
-          </div>
         </div>
       </div>
     </div>

@@ -125,12 +125,6 @@ export const EmployeeLoginPage: React.FC<EmployeeLoginPageProps> = ({ onSuccess 
               <span>{isLoading ? 'Verifying Staff Access...' : 'Sign In to Cleaner Portal'}</span>
             </button>
           </form>
-
-          <div className="pt-2 text-center border-t border-slate-800/80">
-            <p className="text-[11px] text-slate-500">
-              Are you the company owner or admin? Access the <a href="/admin/login" className="text-emerald-400 hover:underline font-semibold">Owner Portal</a>
-            </p>
-          </div>
         </div>
       </div>
     </div>

@@ -271,26 +271,32 @@ export class EmployeesService {
   }
 
   public static createEmployee(orgId: string, actorUserId: string, data: CreateEmployeeInput): EmployeeDetailView {
-    // Generate unique employee code (or verify provided code)
     let employeeCode = data.employee_code?.trim();
-    if (!employeeCode) {
-      employeeCode = `NYC-${Math.floor(10000 + Math.random() * 90000)}`;
-    }
 
-    // Auto-resolve any collision by generating a guaranteed unique code
-    let existing = db.queryOne<Employee>(
-      'SELECT id FROM employees WHERE organization_id = ? AND employee_code = ?',
-      [orgId, employeeCode]
-    );
-
-    let attempts = 0;
-    while (existing && attempts < 50) {
-      employeeCode = `NYC-${Math.floor(10000 + Math.random() * 90000)}`;
-      existing = db.queryOne<Employee>(
+    if (employeeCode) {
+      const existing = db.queryOne<Employee>(
         'SELECT id FROM employees WHERE organization_id = ? AND employee_code = ?',
         [orgId, employeeCode]
       );
-      attempts++;
+      if (existing) {
+        throw new Error(`Employee with ID / Code '${employeeCode}' already exists in this organization`);
+      }
+    } else {
+      // Auto-generate a guaranteed unique code
+      employeeCode = `NYC-${Math.floor(10000 + Math.random() * 90000)}`;
+      let existing = db.queryOne<Employee>(
+        'SELECT id FROM employees WHERE organization_id = ? AND employee_code = ?',
+        [orgId, employeeCode]
+      );
+      let attempts = 0;
+      while (existing && attempts < 50) {
+        employeeCode = `NYC-${Math.floor(10000 + Math.random() * 90000)}`;
+        existing = db.queryOne<Employee>(
+          'SELECT id FROM employees WHERE organization_id = ? AND employee_code = ?',
+          [orgId, employeeCode]
+        );
+        attempts++;
+      }
     }
 
     const employeeId = uuidv4();
