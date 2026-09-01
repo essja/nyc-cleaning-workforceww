@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: nyc-cleaning-workforce
+    env: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    disk:
+      name: workforce-db-disk
+      mountPath: /app/packages/server/data
+      sizeGB: 1
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: JWT_SECRET
+        value: nyccleaning-production-jwt-secret-2026!

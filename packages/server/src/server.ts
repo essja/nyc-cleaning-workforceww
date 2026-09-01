@@ -2,6 +2,9 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
+import path from 'path';
+import fs from 'fs';
+import { fileURLToPath } from 'url';
 import { runMigrations } from './db/migrate.js';
 import authRoutes from './modules/auth/auth.routes.js';
 import buildingRoutes from './modules/buildings/buildings.routes.js';
@@ -15,13 +18,18 @@ import auditRoutes from './modules/audit/audit.routes.js';
 import syncRoutes from './modules/sync/sync.routes.js';
 import intelligenceRoutes from './modules/ai/intelligence.routes.js';
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 export function createApp() {
   const app = express();
 
   // Security & standard middleware
-  app.use(helmet());
+  app.use(helmet({
+    contentSecurityPolicy: false // Allow OpenStreetMap tiles and client assets
+  }));
   app.use(cors({
-    origin: process.env.CLIENT_URL || 'http://localhost:5173',
+    origin: true,
     credentials: true
   }));
   app.use(express.json());
@@ -51,10 +59,19 @@ export function createApp() {
   app.use('/api/v1/sync', syncRoutes);
   app.use('/api/v1/ai', intelligenceRoutes);
 
-  // Global 404 handler
-  app.use('/api/*', (req, res) => {
-    res.status(404).json({ error: `API route not found: ${req.method} ${req.originalUrl}` });
-  });
+  // Serve static client frontend files in production
+  const clientDistPath = path.resolve(__dirname, '../../client/dist');
+  if (fs.existsSync(clientDistPath)) {
+    app.use(express.static(clientDistPath));
+    app.get('*', (req, res) => {
+      res.sendFile(path.join(clientDistPath, 'index.html'));
+    });
+  } else {
+    // Global 404 handler for API routes
+    app.use('/api/*', (req, res) => {
+      res.status(404).json({ error: `API route not found: ${req.method} ${req.originalUrl}` });
+    });
+  }
 
   return app;
 }
