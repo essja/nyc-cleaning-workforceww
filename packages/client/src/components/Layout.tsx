@@ -106,7 +106,10 @@ export const Layout: React.FC<LayoutProps> = ({
               <p className="text-[10px] text-blue-400 font-mono font-bold uppercase tracking-wider">{adminUser?.role}</p>
             </div>
             <button
-              onClick={logoutAdmin}
+              onClick={() => {
+                logoutAdmin();
+                window.location.href = '/admin/login';
+              }}
               title="Sign Out of Admin Portal"
               className="p-2 rounded-lg hover:bg-red-500/20 text-slate-400 hover:text-red-400 transition"
             >

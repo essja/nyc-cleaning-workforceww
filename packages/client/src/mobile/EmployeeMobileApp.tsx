@@ -224,7 +224,10 @@ export const EmployeeMobileApp: React.FC = () => {
         </div>
 
         <button
-          onClick={logout}
+          onClick={() => {
+            logout();
+            window.location.href = '/employee/login';
+          }}
           title="Sign Out"
           className="p-2 rounded-xl bg-slate-800/80 text-slate-400 hover:text-red-400 hover:bg-red-500/10 transition"
         >

@@ -130,7 +130,7 @@ export const App: React.FC = () => {
     return null;
   }
 
-  // If unauthenticated, redirect to employee login by default (or admin login if requested)
-  navigate('/employee/login');
-  return <EmployeeLoginPage onSuccess={() => navigate('/employee/dashboard')} />;
+  // If unauthenticated, default to the Owner/Admin Portal
+  navigate('/admin/login');
+  return <AdminLoginPage onSuccess={() => navigate('/admin/dashboard')} />;
 };
